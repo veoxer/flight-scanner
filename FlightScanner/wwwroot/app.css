@@ -135,6 +135,35 @@ h1:focus {
     align-items: start;
 }
 
+.settings-note {
+    color: var(--muted);
+    margin-bottom: 1rem;
+}
+
+.channel-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.channel-toggle {
+    align-items: flex-start;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem;
+}
+
+.channel-toggle strong,
+.channel-toggle small {
+    display: block;
+}
+
+.channel-toggle small {
+    color: var(--muted);
+}
+
 .actions-row, .page-title-row {
     display: flex;
     align-items: end;
@@ -215,7 +244,7 @@ h1:focus {
 }
 
 @media (max-width: 980px) {
-    .metrics-grid, .search-grid, .settings-grid, .result-card, .alert-row {
+    .metrics-grid, .search-grid, .settings-grid, .channel-grid, .result-card, .alert-row {
         grid-template-columns: 1fr;
     }
 

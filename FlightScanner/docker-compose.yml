@@ -24,21 +24,8 @@ services:
       FLIGHT_PROVIDER_PRICE_JSON_PATH: "${FLIGHT_PROVIDER_PRICE_JSON_PATH:-$.offers[0].price}"
       FLIGHT_PROVIDER_CURRENCY_JSON_PATH: "${FLIGHT_PROVIDER_CURRENCY_JSON_PATH:-$.offers[0].currency}"
       FLIGHT_PROVIDER_URL_JSON_PATH: "${FLIGHT_PROVIDER_URL_JSON_PATH:-$.offers[0].url}"
-      SMTP_HOST: "${SMTP_HOST:-smtp.gmail.com}"
-      SMTP_PORT: "${SMTP_PORT:-587}"
-      SMTP_USE_STARTTLS: "${SMTP_USE_STARTTLS:-true}"
-      SMTP_FROM: "${SMTP_FROM:-}"
-      SMTP_USER: "${SMTP_USER:-}"
-      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
-      WHATSAPP_API_URL: "${WHATSAPP_API_URL:-}"
-      WHATSAPP_HTTP_METHOD: "${WHATSAPP_HTTP_METHOD:-POST}"
-      WHATSAPP_HEADERS_JSON: '${WHATSAPP_HEADERS_JSON:-{}}'
-      WHATSAPP_BODY_TEMPLATE: '${WHATSAPP_BODY_TEMPLATE:-{"to":"{{to}}","message":"{{message}}"}}'
-      VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
-      VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
-      VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@example.com}"
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:18080:8080"
     volumes:
       - flightscanner_keys:/var/lib/flightscanner/keys
     networks:

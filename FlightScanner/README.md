@@ -9,7 +9,8 @@ Self-hosted ASP.NET Core/Blazor PWA for searching demo/custom flight fares and c
 - Flight search by airport, country, or continent with common filters: passengers, dates, cabin, bags, direct-only, and stops.
 - Price alerts with a background scanner.
 - Notification pipeline for browser push subscription records, SMTP email, and a configurable WhatsApp HTTP API.
-- Admin integration settings for a custom flight provider API, SMTP, WhatsApp, and Web Push VAPID keys.
+- Admin reminder settings for delivery channels, SMTP, WhatsApp, and Web Push VAPID keys.
+- Admin integration settings for a custom flight provider API.
 - PWA manifest and service worker.
 - PostgreSQL storage configured from environment variables.
 
@@ -36,6 +37,8 @@ POSTGRES_SSL_MODE=Disable
 
 All deployment-sensitive values should be supplied through environment variables or Portainer secrets/env management. Do not commit `.env`.
 
+Email, WhatsApp, and mobile notification settings are configured in the app after setup from `Admin > Reminders`.
+
 ## Run Locally
 
 ```powershell
@@ -60,7 +63,7 @@ docker compose up -d --build
 
 For Portainer, create a stack from `docker-compose.yml`, add environment values from `.env.example`, and keep the `flightscanner_keys` volume. That volume persists ASP.NET Core data-protection keys, so auth cookies survive container restarts.
 
-The container listens on port `8080`. Put nginx in front of it for `flight.veoxer.com` and TLS. A starter nginx server block is in `deploy/nginx.flight.veoxer.com.conf`.
+The container listens on port `8080` internally and is bound to `127.0.0.1:18080` on the host. Put nginx in front of it for `flight.veoxer.com` and TLS. A starter nginx server block is in `deploy/nginx.flight.veoxer.com.conf`.
 
 ## Flight Data
 

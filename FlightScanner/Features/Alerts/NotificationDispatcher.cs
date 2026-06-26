@@ -24,27 +24,38 @@ public sealed class NotificationDispatcher(
     {
         var subject = $"Flight alert: {offer.Origin} to {offer.Destination} at {offer.Price:0.##} {offer.Currency}";
         var body = $"{offer.Airline} {offer.FlightNumber} is now {offer.Price:0.##} {offer.Currency} for {offer.DepartDate:yyyy-MM-dd}. Target: {alert.TargetPrice:0.##} {alert.Currency}.";
+        var settings = await LoadSettingsAsync(cancellationToken);
 
-        if (alert.NotifyByEmail && !string.IsNullOrWhiteSpace(alert.User?.Email))
+        if (settings.Email.Enabled && !string.IsNullOrWhiteSpace(alert.User?.Email))
         {
-            await SendEmailAsync(alert, alert.User.Email, subject, body, cancellationToken);
+            await SendEmailAsync(alert, alert.User.Email, subject, body, settings.Email.Options, cancellationToken);
         }
 
-        if (alert.NotifyByWhatsApp && !string.IsNullOrWhiteSpace(alert.WhatsAppTo))
+        var whatsAppRecipient = alert.WhatsAppTo ?? alert.User?.PhoneNumber;
+        if (settings.WhatsApp.Enabled && !string.IsNullOrWhiteSpace(whatsAppRecipient))
         {
-            await SendWhatsAppAsync(alert, alert.WhatsAppTo, subject, body, cancellationToken);
+            await SendWhatsAppAsync(alert, whatsAppRecipient, subject, body, settings.WhatsApp.Options, cancellationToken);
         }
 
-        if (alert.NotifyByPush)
+        if (settings.WebPush.Enabled)
         {
-            await RecordAttemptAsync(alert.Id, "Push", alert.UserId, subject, body, true, "Browser push subscription stored. Full background Web Push requires VAPID sender configuration.", cancellationToken);
+            var pushReady = !string.IsNullOrWhiteSpace(settings.WebPush.Options.PublicKey)
+                && !string.IsNullOrWhiteSpace(settings.WebPush.Options.PrivateKey);
+            await RecordAttemptAsync(
+                alert.Id,
+                "Push",
+                alert.UserId,
+                subject,
+                body,
+                pushReady,
+                pushReady ? "Browser push subscription stored. Web Push sender delivery is ready for implementation." : "Mobile notifications are enabled but VAPID keys are not configured.",
+                cancellationToken);
         }
     }
 
-    private async Task SendEmailAsync(PriceAlert alert, string recipient, string subject, string body, CancellationToken cancellationToken)
+    private async Task SendEmailAsync(PriceAlert alert, string recipient, string subject, string body, EmailOptions options, CancellationToken cancellationToken)
     {
-        var options = await LoadOptionsAsync<EmailOptions>(IntegrationKind.Email, cancellationToken);
-        if (options is null || string.IsNullOrWhiteSpace(options.SmtpHost) || string.IsNullOrWhiteSpace(options.FromAddress))
+        if (string.IsNullOrWhiteSpace(options.SmtpHost) || string.IsNullOrWhiteSpace(options.FromAddress))
         {
             await RecordAttemptAsync(alert.Id, "Email", recipient, subject, body, false, "Email integration is not configured.", cancellationToken);
             return;
@@ -73,10 +84,9 @@ public sealed class NotificationDispatcher(
         }
     }
 
-    private async Task SendWhatsAppAsync(PriceAlert alert, string recipient, string subject, string body, CancellationToken cancellationToken)
+    private async Task SendWhatsAppAsync(PriceAlert alert, string recipient, string subject, string body, WhatsAppOptions options, CancellationToken cancellationToken)
     {
-        var options = await LoadOptionsAsync<WhatsAppOptions>(IntegrationKind.WhatsApp, cancellationToken);
-        if (options is null || string.IsNullOrWhiteSpace(options.EndpointUrl))
+        if (string.IsNullOrWhiteSpace(options.EndpointUrl))
         {
             await RecordAttemptAsync(alert.Id, "WhatsApp", recipient, subject, body, false, "WhatsApp integration is not configured.", cancellationToken);
             return;
@@ -107,18 +117,15 @@ public sealed class NotificationDispatcher(
         }
     }
 
-    private async Task<T?> LoadOptionsAsync<T>(IntegrationKind kind, CancellationToken cancellationToken)
+    private async Task<ReminderDeliverySettings> LoadSettingsAsync(CancellationToken cancellationToken)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var setting = await db.IntegrationSettings.AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Kind == kind && item.Enabled, cancellationToken);
+        var settings = await db.IntegrationSettings.AsNoTracking().ToListAsync(cancellationToken);
 
-        if (setting is null)
-        {
-            return default;
-        }
-
-        return JsonSerializer.Deserialize<T>(setting.SettingsJson, JsonOptions());
+        return new ReminderDeliverySettings(
+            Read<EmailOptions>(settings, IntegrationKind.Email),
+            Read<WhatsAppOptions>(settings, IntegrationKind.WhatsApp),
+            Read<WebPushOptions>(settings, IntegrationKind.WebPush));
     }
 
     private async Task RecordAttemptAsync(int? alertId, string channel, string recipient, string subject, string body, bool succeeded, string? error, CancellationToken cancellationToken)
@@ -155,4 +162,24 @@ public sealed class NotificationDispatcher(
     }
 
     private static JsonSerializerOptions JsonOptions() => new(JsonSerializerDefaults.Web);
+
+    private static EnabledOptions<T> Read<T>(IEnumerable<IntegrationSetting> settings, IntegrationKind kind) where T : new()
+    {
+        var setting = settings.FirstOrDefault(item => item.Kind == kind);
+        if (setting is null)
+        {
+            return new EnabledOptions<T>(false, new T());
+        }
+
+        return new EnabledOptions<T>(
+            setting.Enabled,
+            JsonSerializer.Deserialize<T>(setting.SettingsJson, JsonOptions()) ?? new T());
+    }
+
+    private sealed record ReminderDeliverySettings(
+        EnabledOptions<EmailOptions> Email,
+        EnabledOptions<WhatsAppOptions> WhatsApp,
+        EnabledOptions<WebPushOptions> WebPush);
+
+    private sealed record EnabledOptions<T>(bool Enabled, T Options);
 }
