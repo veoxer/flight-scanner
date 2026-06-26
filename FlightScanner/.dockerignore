@@ -1,0 +1,10 @@
+bin/
+obj/
+.verify-build/
+Data/app.db*
+data-protection-keys/
+.env
+.env.*
+!.env.example
+.git/
+.vs/

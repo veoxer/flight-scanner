@@ -1,0 +1,137 @@
+@page "/alerts"
+@attribute [Authorize]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime Js
+
+<PageTitle>Alerts</PageTitle>
+
+<div class="page-title-row">
+    <h1>Price alerts</h1>
+    <button class="btn btn-outline-primary" @onclick="EnableNotificationsAsync">Enable notifications</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert alert-info">@message</div>
+}
+
+@if (alerts.Count == 0)
+{
+    <div class="empty-state">
+        <h2>No alerts yet</h2>
+        <p>Create one from the search page and the background scanner will keep checking it.</p>
+        <a class="btn btn-primary" href="search">Create alert</a>
+    </div>
+}
+else
+{
+    <div class="alert-list">
+        @foreach (var alert in alerts)
+        {
+            <article class="alert-row">
+                <div>
+                    <strong>@alert.Origin to @alert.Destination</strong>
+                    <span>@alert.DepartFrom.ToString("yyyy-MM-dd") to @alert.DepartTo.ToString("yyyy-MM-dd") - @alert.Adults adult(s) - @alert.Cabin</span>
+                </div>
+                <div>
+                    <strong>@alert.TargetPrice.ToString("0.##") @alert.Currency</strong>
+                    <span>Last seen: @(alert.LastObservedPrice?.ToString("0.##") ?? "not checked")</span>
+                </div>
+                <div class="row-actions">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAsync(alert.Id)">@(alert.IsActive ? "Pause" : "Resume")</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(alert.Id)">Delete</button>
+                </div>
+            </article>
+        }
+    </div>
+}
+
+<h2 class="mt-4">Recent notifications</h2>
+<div class="table-responsive">
+    <table class="table align-middle">
+        <thead>
+            <tr>
+                <th>When</th>
+                <th>Channel</th>
+                <th>Status</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var attempt in attempts)
+            {
+                <tr>
+                    <td>@attempt.CreatedAt.LocalDateTime.ToString("g")</td>
+                    <td>@attempt.Channel</td>
+                    <td>@(attempt.Succeeded ? "Sent" : "Failed")</td>
+                    <td>@attempt.Subject</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<PriceAlert> alerts = [];
+    private List<NotificationAttempt> attempts = [];
+    private string? userId;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        alerts = await db.PriceAlerts
+            .Where(alert => alert.UserId == userId)
+            .OrderByDescending(alert => alert.CreatedAt)
+            .ToListAsync();
+        attempts = await db.NotificationAttempts
+            .Where(attempt => attempt.Recipient == userId || alerts.Select(alert => (int?)alert.Id).Contains(attempt.PriceAlertId))
+            .OrderByDescending(attempt => attempt.CreatedAt)
+            .Take(20)
+            .ToListAsync();
+    }
+
+    private async Task ToggleAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var alert = await db.PriceAlerts.FirstAsync(item => item.Id == id && item.UserId == userId);
+        alert.IsActive = !alert.IsActive;
+        await db.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var alert = await db.PriceAlerts.FirstAsync(item => item.Id == id && item.UserId == userId);
+        db.PriceAlerts.Remove(alert);
+        await db.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private async Task EnableNotificationsAsync()
+    {
+        var permission = await Js.InvokeAsync<string>("flightNotifications.requestPermission");
+        var subscription = await Js.InvokeAsync<string>("flightNotifications.subscribePush");
+        message = subscription switch
+        {
+            "subscribed" => "Push notifications are enabled for this device.",
+            "missing-public-key" => "Browser notifications are allowed. Add VAPID keys in integrations to enable background mobile push.",
+            "unsupported" => "This browser does not support push notifications.",
+            _ => $"Notification permission: {permission}."
+        };
+    }
+}

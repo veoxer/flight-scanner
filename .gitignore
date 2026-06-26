@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.verify-build/
+**/Data/app.db
+**/Data/app.db-shm
+**/Data/app.db-wal
+.env
+.env.*
+!.env.example
+**/data-protection-keys/

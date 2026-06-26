@@ -1,0 +1,49 @@
+@page "/"
+@attribute [AllowAnonymous]
+@inject SetupState SetupState
+@inject NavigationManager Navigation
+
+<PageTitle>Flight Scanner</PageTitle>
+
+<section class="hero-band">
+    <div>
+        <p class="eyebrow">Self-hosted fare watching</p>
+        <h1>Flight Scanner</h1>
+        <p class="lead">Search airports, countries, and continents, then let the app watch price targets in the background.</p>
+        <AuthorizeView>
+            <Authorized>
+                <a class="btn btn-primary btn-lg" href="search">Search flights</a>
+                <a class="btn btn-outline-secondary btn-lg ms-2" href="alerts">View alerts</a>
+            </Authorized>
+            <NotAuthorized>
+                <a class="btn btn-primary btn-lg" href="Account/Login">Login</a>
+                <a class="btn btn-outline-secondary btn-lg ms-2" href="Account/Register">Register</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+</section>
+
+<section class="metrics-grid">
+    <div>
+        <strong>Location scope</strong>
+        <span>Airport, city, country, or continent</span>
+    </div>
+    <div>
+        <strong>Alerts</strong>
+        <span>Push-ready, SMTP email, and configurable WhatsApp API</span>
+    </div>
+    <div>
+        <strong>Data source</strong>
+        <span>Demo engine now, custom free/self-hosted HTTP provider later</span>
+    </div>
+</section>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await SetupState.IsCompleteAsync())
+        {
+            Navigation.NavigateTo("/setup", replace: true);
+        }
+    }
+}

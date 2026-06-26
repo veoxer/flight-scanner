@@ -1,0 +1,99 @@
+@page "/setup"
+@attribute [AllowAnonymous]
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject SetupState SetupState
+@inject NavigationManager Navigation
+
+<PageTitle>Setup</PageTitle>
+
+<div class="setup-shell">
+    <div>
+        <p class="eyebrow">First opening</p>
+        <h1>Create the admin user</h1>
+        <p class="lead">This account can configure integrations, manage users, and control alerts across the app.</p>
+    </div>
+
+    @if (isComplete)
+    {
+        <div class="alert alert-info">Setup is already complete.</div>
+        <a class="btn btn-primary" href="/">Go to dashboard</a>
+    }
+    else
+    {
+        <EditForm Model="input" OnValidSubmit="CreateAdminAsync" FormName="setup-admin" class="panel-form">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" />
+
+            <label class="form-label">Display name</label>
+            <InputText class="form-control" @bind-Value="input.DisplayName" />
+
+            <label class="form-label mt-3">Email</label>
+            <InputText class="form-control" type="email" @bind-Value="input.Email" />
+
+            <label class="form-label mt-3">Password</label>
+            <InputText class="form-control" type="password" @bind-Value="input.Password" />
+
+            <button class="btn btn-primary mt-4" type="submit" disabled="@busy">Create admin</button>
+        </EditForm>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="alert alert-danger mt-3">@message</div>
+    }
+</div>
+
+@code {
+    private readonly SetupInput input = new();
+    private bool isComplete;
+    private bool busy;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isComplete = await SetupState.IsCompleteAsync();
+    }
+
+    private async Task CreateAdminAsync()
+    {
+        busy = true;
+        message = null;
+
+        var user = new ApplicationUser
+        {
+            UserName = input.Email,
+            Email = input.Email,
+            EmailConfirmed = true,
+            DisplayName = input.DisplayName,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var result = await UserManager.CreateAsync(user, input.Password);
+        if (!result.Succeeded)
+        {
+            message = string.Join(" ", result.Errors.Select(error => error.Description));
+            busy = false;
+            return;
+        }
+
+        await UserManager.AddToRolesAsync(user, ["Admin", "User"]);
+        await SetupState.MarkCompleteAsync();
+        await SignInManager.SignInAsync(user, isPersistent: true);
+        Navigation.NavigateTo("/", replace: true);
+    }
+
+    private sealed class SetupInput
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public string DisplayName { get; set; } = "Admin";
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.EmailAddress]
+        public string Email { get; set; } = "";
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.MinLength(10)]
+        public string Password { get; set; } = "";
+    }
+}

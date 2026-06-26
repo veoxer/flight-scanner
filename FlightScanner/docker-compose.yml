@@ -1,0 +1,23 @@
+services:
+  flightscanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flightscanner
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - flightscanner_keys:/var/lib/flightscanner/keys
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  flightscanner_keys:

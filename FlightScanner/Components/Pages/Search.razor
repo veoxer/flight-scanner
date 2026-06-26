@@ -1,0 +1,228 @@
+@page "/search"
+@attribute [Authorize]
+@inject IFlightSearchService FlightSearch
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Search</PageTitle>
+
+<h1>Search flights</h1>
+
+<EditForm Model="model" FormName="search-form">
+    <div class="tool-surface">
+        <div class="search-grid">
+        <div>
+            <label class="form-label">From scope</label>
+            <InputSelect class="form-select" @bind-Value="model.OriginType">
+                @foreach (var type in Enum.GetValues<LocationType>())
+                {
+                    <option value="@type">@type</option>
+                }
+            </InputSelect>
+        </div>
+        <div>
+            <label class="form-label">From</label>
+            <InputText class="form-control" @bind-Value="model.Origin" placeholder="JFK, Morocco, Europe" />
+        </div>
+        <div>
+            <label class="form-label">To scope</label>
+            <InputSelect class="form-select" @bind-Value="model.DestinationType">
+                @foreach (var type in Enum.GetValues<LocationType>())
+                {
+                    <option value="@type">@type</option>
+                }
+            </InputSelect>
+        </div>
+        <div>
+            <label class="form-label">To</label>
+            <InputText class="form-control" @bind-Value="model.Destination" placeholder="CMN, Japan, Asia" />
+        </div>
+        <div>
+            <label class="form-label">Depart from</label>
+            <InputDate class="form-control" @bind-Value="model.DepartFrom" />
+        </div>
+        <div>
+            <label class="form-label">Depart to</label>
+            <InputDate class="form-control" @bind-Value="model.DepartTo" />
+        </div>
+        <div>
+            <label class="form-label">Return from</label>
+            <InputDate class="form-control" @bind-Value="model.ReturnFrom" />
+        </div>
+        <div>
+            <label class="form-label">Return to</label>
+            <InputDate class="form-control" @bind-Value="model.ReturnTo" />
+        </div>
+        <div>
+            <label class="form-label">Adults</label>
+            <InputNumber class="form-control" @bind-Value="model.Adults" />
+        </div>
+        <div>
+            <label class="form-label">Children</label>
+            <InputNumber class="form-control" @bind-Value="model.Children" />
+        </div>
+        <div>
+            <label class="form-label">Infants</label>
+            <InputNumber class="form-control" @bind-Value="model.Infants" />
+        </div>
+        <div>
+            <label class="form-label">Cabin</label>
+            <InputSelect class="form-select" @bind-Value="model.Cabin">
+                @foreach (var cabin in Enum.GetValues<CabinClass>())
+                {
+                    <option value="@cabin">@cabin</option>
+                }
+            </InputSelect>
+        </div>
+        <div>
+            <label class="form-label">Max stops</label>
+            <InputNumber class="form-control" @bind-Value="model.MaxStops" />
+        </div>
+        <div>
+            <label class="form-label">Checked bags</label>
+            <InputNumber class="form-control" @bind-Value="model.CheckedBags" />
+        </div>
+        <div>
+            <label class="form-label">Currency</label>
+            <InputText class="form-control" maxlength="3" @bind-Value="model.Currency" />
+        </div>
+        <div class="form-check align-self-end">
+            <InputCheckbox class="form-check-input" @bind-Value="model.DirectOnly" />
+            <label class="form-check-label">Direct flights only</label>
+        </div>
+    </div>
+
+        <div class="actions-row">
+            <button type="button" class="btn btn-primary" @onclick="RunSearchAsync" disabled="@busy">Search</button>
+            <div class="target-price">
+                <label class="form-label">Alert target</label>
+                <InputNumber class="form-control" @bind-Value="model.TargetPrice" />
+            </div>
+            <button type="button" class="btn btn-outline-primary" @onclick="SaveAlertAsync" disabled="@busy">Save alert</button>
+        </div>
+    </div>
+</EditForm>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert alert-info mt-3">@message</div>
+}
+
+@if (offers.Count > 0)
+{
+    <div class="results-grid">
+        @foreach (var offer in offers)
+        {
+            <article class="result-card">
+                <div>
+                    <strong>@offer.Airline @offer.FlightNumber</strong>
+                    <span>@offer.Provider</span>
+                </div>
+                <div>
+                    <strong>@offer.Price.ToString("0.##") @offer.Currency</strong>
+                    <span>@offer.Stops @(offer.Stops == 1 ? "stop" : "stops") - @offer.Duration.Hours h @offer.Duration.Minutes m</span>
+                </div>
+                <div>
+                    <strong>@offer.DepartDate.ToString("yyyy-MM-dd")</strong>
+                    <span>@offer.Origin to @offer.Destination</span>
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@code {
+    private readonly SearchInput model = new();
+    private IReadOnlyList<FlightOffer> offers = [];
+    private bool busy;
+    private string? message;
+
+    private async Task RunSearchAsync()
+    {
+        busy = true;
+        message = null;
+        offers = await FlightSearch.SearchAsync(model.ToQuery());
+        busy = false;
+    }
+
+    private async Task SaveAlertAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            message = "Login expired. Please sign in again.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.PriceAlerts.Add(model.ToAlert(userId));
+        await db.SaveChangesAsync();
+        message = "Alert saved. The background scanner will check it automatically.";
+    }
+
+    private sealed class SearchInput
+    {
+        public LocationType OriginType { get; set; } = LocationType.Airport;
+        public string Origin { get; set; } = "JFK";
+        public LocationType DestinationType { get; set; } = LocationType.Continent;
+        public string Destination { get; set; } = "Europe";
+        public DateTime DepartFrom { get; set; } = DateTime.Today.AddDays(14);
+        public DateTime DepartTo { get; set; } = DateTime.Today.AddDays(28);
+        public DateTime? ReturnFrom { get; set; }
+        public DateTime? ReturnTo { get; set; }
+        public int Adults { get; set; } = 1;
+        public int Children { get; set; }
+        public int Infants { get; set; }
+        public CabinClass Cabin { get; set; }
+        public bool DirectOnly { get; set; }
+        public int? MaxStops { get; set; } = 1;
+        public int CheckedBags { get; set; }
+        public string Currency { get; set; } = "USD";
+        public decimal TargetPrice { get; set; } = 400;
+
+        public FlightSearchQuery ToQuery() => new(
+            OriginType,
+            Origin.Trim(),
+            DestinationType,
+            Destination.Trim(),
+            DateOnly.FromDateTime(DepartFrom),
+            DateOnly.FromDateTime(DepartTo),
+            ReturnFrom is null ? null : DateOnly.FromDateTime(ReturnFrom.Value),
+            ReturnTo is null ? null : DateOnly.FromDateTime(ReturnTo.Value),
+            Math.Max(1, Adults),
+            Math.Max(0, Children),
+            Math.Max(0, Infants),
+            Cabin,
+            DirectOnly,
+            MaxStops,
+            Math.Max(0, CheckedBags),
+            Currency.Trim().ToUpperInvariant());
+
+        public PriceAlert ToAlert(string userId)
+        {
+            var query = ToQuery();
+            return new PriceAlert
+            {
+                UserId = userId,
+                OriginType = query.OriginType,
+                Origin = query.Origin,
+                DestinationType = query.DestinationType,
+                Destination = query.Destination,
+                DepartFrom = query.DepartFrom,
+                DepartTo = query.DepartTo,
+                ReturnFrom = query.ReturnFrom,
+                ReturnTo = query.ReturnTo,
+                Adults = query.Adults,
+                Children = query.Children,
+                Infants = query.Infants,
+                Cabin = query.Cabin,
+                DirectOnly = query.DirectOnly,
+                MaxStops = query.MaxStops,
+                CheckedBags = query.CheckedBags,
+                Currency = query.Currency,
+                TargetPrice = TargetPrice
+            };
+        }
+    }
+}

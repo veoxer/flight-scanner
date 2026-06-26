@@ -1,0 +1,236 @@
+:root {
+    --ink: #172026;
+    --muted: #64748b;
+    --line: #d9e2ec;
+    --surface: #ffffff;
+    --band: #f7fafc;
+    --teal: #0f766e;
+    --teal-dark: #115e59;
+    --blue: #2563eb;
+    --amber: #b7791f;
+    --danger: #b42318;
+}
+
+html, body {
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    color: var(--ink);
+    background: #f4f7f9;
+}
+
+a, .btn-link {
+    color: var(--teal);
+}
+
+.btn {
+    border-radius: 6px;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: var(--teal);
+    border-color: var(--teal);
+}
+
+.btn-primary:hover {
+    background-color: var(--teal-dark);
+    border-color: var(--teal-dark);
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-select:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 0.18rem rgba(15, 118, 110, 0.2);
+    border-color: var(--teal);
+}
+
+.content {
+    padding-top: 1.2rem;
+    padding-bottom: 2rem;
+}
+
+h1, h2 {
+    letter-spacing: 0;
+}
+
+h1 {
+    font-size: 2rem;
+    font-weight: 750;
+}
+
+h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.eyebrow {
+    color: var(--teal);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.lead {
+    color: #475569;
+    max-width: 62rem;
+}
+
+.hero-band {
+    background: linear-gradient(120deg, #e8f5f2 0%, #f8fafc 58%, #fff7ed 100%);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: clamp(1.5rem, 4vw, 3.5rem);
+}
+
+.metrics-grid, .search-grid, .settings-grid, .results-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.metrics-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 1rem;
+}
+
+.metrics-grid > div, .result-card, .alert-row, .empty-state, .tool-surface, .setup-shell {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.metrics-grid > div {
+    padding: 1rem;
+}
+
+.metrics-grid strong, .metrics-grid span, .result-card strong, .result-card span, .alert-row strong, .alert-row span {
+    display: block;
+}
+
+.metrics-grid span, .result-card span, .alert-row span {
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.tool-surface, .setup-shell {
+    padding: 1rem;
+}
+
+.setup-shell {
+    max-width: 760px;
+}
+
+.panel-form {
+    max-width: 520px;
+}
+
+.search-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+}
+
+.actions-row, .page-title-row {
+    display: flex;
+    align-items: end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.target-price {
+    width: 12rem;
+}
+
+.results-grid {
+    margin-top: 1rem;
+}
+
+.result-card, .alert-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+    align-items: center;
+}
+
+.alert-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.row-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.empty-state {
+    padding: 1.5rem;
+}
+
+.code-box {
+    min-height: 7rem;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.88rem;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid var(--danger);
+}
+
+.validation-message {
+    color: var(--danger);
+}
+
+.blazor-error-boundary {
+    background: #8a1f17;
+    padding: 1rem;
+    color: white;
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred.";
+}
+
+.darker-border-checkbox.form-check-input {
+    border-color: #929292;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+    color: var(--bs-secondary-color);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
+
+@media (max-width: 980px) {
+    .metrics-grid, .search-grid, .settings-grid, .result-card, .alert-row {
+        grid-template-columns: 1fr;
+    }
+
+    .row-actions {
+        text-align: left;
+    }
+}
+
+@media (max-width: 640px) {
+    .content {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    .hero-band {
+        padding: 1.25rem;
+    }
+}

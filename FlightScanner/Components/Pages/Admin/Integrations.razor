@@ -1,0 +1,148 @@
+@page "/admin/integrations"
+@attribute [Authorize(Roles = "Admin")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<PageTitle>Integrations</PageTitle>
+
+<h1>Integrations</h1>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="alert alert-success">@message</div>
+}
+
+<EditForm Model="formModel" FormName="integration-settings">
+<div class="settings-grid">
+    <section class="tool-surface">
+        <h2>Flight provider API</h2>
+        <label class="form-label">Endpoint URL</label>
+        <InputText class="form-control" @bind-Value="flight.EndpointUrl" />
+        <label class="form-label mt-3">HTTP method</label>
+        <InputText class="form-control" @bind-Value="flight.HttpMethod" />
+        <label class="form-label mt-3">Headers JSON</label>
+        <InputTextArea class="form-control code-box" @bind-Value="flight.HeadersJson" />
+        <label class="form-label mt-3">Body template</label>
+        <InputTextArea class="form-control code-box" @bind-Value="flight.BodyTemplate" />
+        <label class="form-label mt-3">Price JSON path</label>
+        <InputText class="form-control" @bind-Value="flight.PriceJsonPath" />
+        <label class="form-label mt-3">Currency JSON path</label>
+        <InputText class="form-control" @bind-Value="flight.CurrencyJsonPath" />
+        <label class="form-label mt-3">Booking URL JSON path</label>
+        <InputText class="form-control" @bind-Value="flight.UrlJsonPath" />
+        <div class="form-check mt-3">
+            <InputCheckbox class="form-check-input" @bind-Value="flightEnabled" />
+            <label class="form-check-label">Enabled</label>
+        </div>
+        <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">Save</button>
+    </section>
+
+    <section class="tool-surface">
+        <h2>Email SMTP</h2>
+        <label class="form-label">SMTP host</label>
+        <InputText class="form-control" @bind-Value="email.SmtpHost" />
+        <label class="form-label mt-3">SMTP port</label>
+        <InputNumber class="form-control" @bind-Value="email.SmtpPort" />
+        <label class="form-label mt-3">From address</label>
+        <InputText class="form-control" @bind-Value="email.FromAddress" />
+        <label class="form-label mt-3">Username</label>
+        <InputText class="form-control" @bind-Value="email.UserName" />
+        <label class="form-label mt-3">Password or app password</label>
+        <InputText class="form-control" type="password" @bind-Value="email.Password" />
+        <div class="form-check mt-3">
+            <InputCheckbox class="form-check-input" @bind-Value="email.UseStartTls" />
+            <label class="form-check-label">Use TLS</label>
+        </div>
+        <div class="form-check mt-3">
+            <InputCheckbox class="form-check-input" @bind-Value="emailEnabled" />
+            <label class="form-check-label">Enabled</label>
+        </div>
+        <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">Save</button>
+    </section>
+
+    <section class="tool-surface">
+        <h2>WhatsApp API</h2>
+        <label class="form-label">Endpoint URL</label>
+        <InputText class="form-control" @bind-Value="whatsApp.EndpointUrl" />
+        <label class="form-label mt-3">HTTP method</label>
+        <InputText class="form-control" @bind-Value="whatsApp.HttpMethod" />
+        <label class="form-label mt-3">Headers JSON</label>
+        <InputTextArea class="form-control code-box" @bind-Value="whatsApp.HeadersJson" />
+        <label class="form-label mt-3">Body template</label>
+        <InputTextArea class="form-control code-box" @bind-Value="whatsApp.BodyTemplate" />
+        <div class="form-check mt-3">
+            <InputCheckbox class="form-check-input" @bind-Value="whatsAppEnabled" />
+            <label class="form-check-label">Enabled</label>
+        </div>
+        <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">Save</button>
+    </section>
+
+    <section class="tool-surface">
+        <h2>Web Push</h2>
+        <label class="form-label">VAPID public key</label>
+        <InputTextArea class="form-control code-box" @bind-Value="webPush.PublicKey" />
+        <label class="form-label mt-3">VAPID private key</label>
+        <InputTextArea class="form-control code-box" @bind-Value="webPush.PrivateKey" />
+        <label class="form-label mt-3">Subject</label>
+        <InputText class="form-control" @bind-Value="webPush.Subject" />
+        <div class="form-check mt-3">
+            <InputCheckbox class="form-check-input" @bind-Value="webPushEnabled" />
+            <label class="form-check-label">Enabled</label>
+        </div>
+        <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">Save</button>
+    </section>
+</div>
+</EditForm>
+
+@code {
+    private readonly System.Text.Json.JsonSerializerOptions jsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true };
+    private readonly object formModel = new();
+    private FlightProviderOptions flight = new();
+    private EmailOptions email = new();
+    private WhatsAppOptions whatsApp = new();
+    private WebPushOptions webPush = new();
+    private bool flightEnabled;
+    private bool emailEnabled;
+    private bool whatsAppEnabled;
+    private bool webPushEnabled;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var settings = await db.IntegrationSettings.AsNoTracking().ToListAsync();
+        (flight, flightEnabled) = Read<FlightProviderOptions>(settings, IntegrationKind.FlightProvider);
+        (email, emailEnabled) = Read<EmailOptions>(settings, IntegrationKind.Email);
+        (whatsApp, whatsAppEnabled) = Read<WhatsAppOptions>(settings, IntegrationKind.WhatsApp);
+        (webPush, webPushEnabled) = Read<WebPushOptions>(settings, IntegrationKind.WebPush);
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await SaveSettingAsync(db, IntegrationKind.FlightProvider, flightEnabled, flight);
+        await SaveSettingAsync(db, IntegrationKind.Email, emailEnabled, email);
+        await SaveSettingAsync(db, IntegrationKind.WhatsApp, whatsAppEnabled, whatsApp);
+        await SaveSettingAsync(db, IntegrationKind.WebPush, webPushEnabled, webPush);
+        await db.SaveChangesAsync();
+        message = "Integration settings saved.";
+    }
+
+    private (T Options, bool Enabled) Read<T>(List<IntegrationSetting> settings, IntegrationKind kind) where T : new()
+    {
+        var setting = settings.FirstOrDefault(item => item.Kind == kind);
+        if (setting is null)
+        {
+            return (new T(), false);
+        }
+
+        return (System.Text.Json.JsonSerializer.Deserialize<T>(setting.SettingsJson, jsonOptions) ?? new T(), setting.Enabled);
+    }
+
+    private async Task SaveSettingAsync<T>(ApplicationDbContext db, IntegrationKind kind, bool enabled, T options)
+    {
+        var setting = await db.IntegrationSettings.FirstAsync(item => item.Kind == kind);
+        setting.Enabled = enabled;
+        setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(options, jsonOptions);
+        setting.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+}
