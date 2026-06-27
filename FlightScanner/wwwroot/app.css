@@ -858,6 +858,128 @@ h1:focus {
     padding-inline: 1.25rem;
 }
 
+.route-map-panel {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(226, 232, 240, 0.24);
+    border-radius: 8px;
+    margin-top: 1rem;
+    overflow: hidden;
+    position: relative;
+}
+
+.route-map-copy {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.45rem;
+    justify-content: space-between;
+    left: 1rem;
+    position: absolute;
+    right: 1rem;
+    top: 0.85rem;
+    z-index: 2;
+}
+
+.route-map-copy span {
+    background: rgba(8, 39, 67, 0.75);
+    border: 1px solid rgba(226, 232, 240, 0.28);
+    border-radius: 999px;
+    color: #c7f9f0;
+    font-size: 0.75rem;
+    font-weight: 900;
+    padding: 0.28rem 0.55rem;
+    text-transform: uppercase;
+}
+
+.route-map-copy strong {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 999px;
+    color: #082f49;
+    font-size: 0.82rem;
+    max-width: min(30rem, 66vw);
+    overflow: hidden;
+    padding: 0.32rem 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.route-map {
+    display: block;
+    height: clamp(10.5rem, 24vw, 16.5rem);
+    width: 100%;
+}
+
+.route-map-water {
+    fill: #082338;
+}
+
+.route-map-grid {
+    fill: none;
+    opacity: 0.42;
+    stroke: rgba(207, 250, 254, 0.16);
+    stroke-width: 1;
+}
+
+.route-map-land {
+    fill: rgba(61, 173, 154, 0.27);
+    stroke: rgba(191, 237, 229, 0.4);
+    stroke-width: 1.4;
+}
+
+.route-map-route {
+    fill: none;
+    filter: url(#routePinGlow);
+    stroke: #f8d36b;
+    stroke-dasharray: 8 8;
+    stroke-linecap: round;
+    stroke-width: 4;
+}
+
+.route-map-pin {
+    filter: url(#routePinGlow);
+    transition: transform 0.22s ease;
+}
+
+.route-map-pin > circle:first-child {
+    fill: rgba(255, 255, 255, 0.22);
+}
+
+.route-map-pin path {
+    fill: #f97316;
+    stroke: #fff7ed;
+    stroke-width: 2;
+}
+
+.route-map-pin circle:last-of-type {
+    fill: #fff7ed;
+}
+
+.route-map-pin text {
+    fill: #fff;
+    font-size: 21px;
+    font-weight: 900;
+    paint-order: stroke;
+    stroke: rgba(8, 35, 56, 0.85);
+    stroke-width: 5;
+}
+
+.destination-pin path {
+    fill: #14b8a6;
+    stroke: #ecfeff;
+}
+
+.destination-pin circle:last-of-type {
+    fill: #ecfeff;
+}
+
+.route-map-plane circle {
+    fill: #fff;
+    opacity: 0.96;
+}
+
+.route-map-plane path {
+    fill: #075985;
+}
+
 .location-menu,
 .traveller-panel {
     background: #fff;
@@ -1183,6 +1305,23 @@ h1:focus {
         left: 0;
         right: auto;
         width: min(100%, 24rem);
+    }
+
+    .route-map-copy {
+        align-items: stretch;
+        flex-direction: column;
+        left: 0.75rem;
+        right: 0.75rem;
+    }
+
+    .route-map-copy span,
+    .route-map-copy strong {
+        max-width: 100%;
+        width: fit-content;
+    }
+
+    .route-map-copy strong {
+        white-space: normal;
     }
 
     .filter-inline,

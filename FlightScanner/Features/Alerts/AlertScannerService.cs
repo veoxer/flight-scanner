@@ -1,26 +1,66 @@
 using FlightScanner.Data;
 using FlightScanner.Features.Flights;
+using FlightScanner.Features.Integrations;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace FlightScanner.Features.Alerts;
 
 public sealed class AlertScannerService(
     IServiceScopeFactory scopeFactory,
-    IOptions<AlertScanOptions> options,
     ILogger<AlertScannerService> logger) : BackgroundService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var interval = options.Value.Interval;
-        logger.LogInformation("Alert scanner interval is {IntervalMinutes} minutes.", interval.TotalMinutes);
+        DateTimeOffset? lastScanAt = null;
+        var lastLoggedIntervalMinutes = 0;
 
-        await ScanAsync(stoppingToken);
-
-        using var timer = new PeriodicTimer(interval);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        while (!stoppingToken.IsCancellationRequested)
         {
-            await ScanAsync(stoppingToken);
+            var interval = await GetScanIntervalAsync(stoppingToken);
+            var intervalMinutes = (int)interval.TotalMinutes;
+            if (lastLoggedIntervalMinutes != intervalMinutes)
+            {
+                lastLoggedIntervalMinutes = intervalMinutes;
+                logger.LogInformation("Alert scanner interval is {IntervalMinutes} minutes.", intervalMinutes);
+            }
+
+            if (lastScanAt is null || DateTimeOffset.UtcNow - lastScanAt >= interval)
+            {
+                await ScanAsync(stoppingToken);
+                lastScanAt = DateTimeOffset.UtcNow;
+            }
+
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        }
+    }
+
+    private async Task<TimeSpan> GetScanIntervalAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var setting = await db.IntegrationSettings.AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider, cancellationToken);
+            if (setting is null)
+            {
+                return TimeSpan.FromMinutes(AlertScanOptions.DefaultIntervalMinutes);
+            }
+
+            var options = JsonSerializer.Deserialize<FlightProviderOptions>(setting.SettingsJson, JsonOptions) ?? new();
+            return TimeSpan.FromMinutes(AlertScanOptions.NormalizeMinutes(options.AlertScanIntervalMinutes));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not read alert scan interval. Falling back to {IntervalMinutes} minutes.", AlertScanOptions.DefaultIntervalMinutes);
+            return TimeSpan.FromMinutes(AlertScanOptions.DefaultIntervalMinutes);
         }
     }
 

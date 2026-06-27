@@ -51,6 +51,7 @@ public sealed class StartupInitializer(
 
         var importedLocations = await TryImportWorldLocationsAsync(db, existingLocationKeys, cancellationToken);
         db.FlightLocations.AddRange(importedLocations);
+        await TryHydrateLocationCoordinatesAsync(db, cancellationToken);
 
         foreach (var kind in Enum.GetValues<IntegrationKind>())
         {
@@ -81,6 +82,12 @@ public sealed class StartupInitializer(
 
             ALTER TABLE "PriceAlerts"
             ADD COLUMN IF NOT EXISTS "MinTargetPrice" numeric(10,2);
+
+            ALTER TABLE "FlightLocations"
+            ADD COLUMN IF NOT EXISTS "Latitude" double precision;
+
+            ALTER TABLE "FlightLocations"
+            ADD COLUMN IF NOT EXISTS "Longitude" double precision;
 
             UPDATE "PriceAlerts"
             SET "MaxTargetPrice" = "TargetPrice"
@@ -144,6 +151,78 @@ public sealed class StartupInitializer(
         }
     }
 
+    private async Task TryHydrateLocationCoordinatesAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var importEnabled = !bool.TryParse(configuration["LOCATION_DATA_IMPORT_ENABLED"], out var enabled) || enabled;
+        if (!importEnabled)
+        {
+            return;
+        }
+
+        var hydrationSetting = await db.AppSettings
+            .FirstOrDefaultAsync(setting => setting.Key == "LocationCoordinatesHydrated", cancellationToken);
+        if (hydrationSetting?.Value == "true")
+        {
+            return;
+        }
+
+        if (!await db.FlightLocations.AnyAsync(location => location.Latitude == null || location.Longitude == null, cancellationToken))
+        {
+            await MarkCoordinateHydrationCompleteAsync(db, hydrationSetting, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            var importedLocations = await DownloadWorldLocationsAsync(cancellationToken);
+            var coordinates = importedLocations
+                .Where(location => location.Latitude is not null && location.Longitude is not null)
+                .GroupBy(location => $"{location.Type}:{location.Code}".ToUpperInvariant())
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First(),
+                    StringComparer.OrdinalIgnoreCase);
+            var locations = await db.FlightLocations
+                .Where(location => location.Latitude == null || location.Longitude == null)
+                .ToListAsync(cancellationToken);
+            var updated = 0;
+
+            foreach (var location in locations)
+            {
+                if (coordinates.TryGetValue($"{location.Type}:{location.Code}".ToUpperInvariant(), out var imported))
+                {
+                    location.Latitude = imported.Latitude;
+                    location.Longitude = imported.Longitude;
+                    updated++;
+                }
+            }
+
+            await MarkCoordinateHydrationCompleteAsync(db, hydrationSetting, cancellationToken);
+            logger.LogInformation("Hydrated coordinates for {LocationCount} existing flight locations.", updated);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Flight location coordinate hydration failed. Route maps will use browser fallbacks where available.");
+        }
+    }
+
+    private static async Task MarkCoordinateHydrationCompleteAsync(
+        ApplicationDbContext db,
+        AppSetting? hydrationSetting,
+        CancellationToken cancellationToken)
+    {
+        hydrationSetting ??= new AppSetting { Key = "LocationCoordinatesHydrated" };
+        hydrationSetting.Value = "true";
+        if (db.Entry(hydrationSetting).State == EntityState.Detached)
+        {
+            db.AppSettings.Add(hydrationSetting);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<IReadOnlyList<FlightLocation>> DownloadWorldLocationsAsync(CancellationToken cancellationToken)
     {
         const string airportsUrl = "https://davidmegginson.github.io/ourairports-data/airports.csv";
@@ -177,8 +256,20 @@ public sealed class StartupInitializer(
             });
         }
 
+        var countryCenters = airportRows
+            .Where(row => !Value(row, "type").Equals("closed", StringComparison.OrdinalIgnoreCase))
+            .Where(row => TryReadCoordinate(row, out _, out _))
+            .GroupBy(row => Value(row, "iso_country"), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (
+                    Latitude: group.Select(row => double.Parse(Value(row, "latitude_deg"), CultureInfo.InvariantCulture)).Average(),
+                    Longitude: group.Select(row => double.Parse(Value(row, "longitude_deg"), CultureInfo.InvariantCulture)).Average()),
+                StringComparer.OrdinalIgnoreCase);
+
         foreach (var (code, country) in countries.OrderBy(country => country.Value.Name))
         {
+            countryCenters.TryGetValue(code, out var center);
             locations.Add(new FlightLocation
             {
                 Type = LocationType.Country,
@@ -186,7 +277,9 @@ public sealed class StartupInitializer(
                 Name = country.Name,
                 CountryCode = code,
                 CountryName = country.Name,
-                Continent = country.Continent
+                Continent = country.Continent,
+                Latitude = center.Latitude == 0 && center.Longitude == 0 ? null : center.Latitude,
+                Longitude = center.Latitude == 0 && center.Longitude == 0 ? null : center.Longitude
             });
         }
 
@@ -228,6 +321,7 @@ public sealed class StartupInitializer(
         code = Truncate(code.ToUpperInvariant(), 16);
         var countryCode = Value(row, "iso_country");
         countries.TryGetValue(countryCode, out var country);
+        TryReadCoordinate(row, out var latitude, out var longitude);
         var continent = !string.IsNullOrWhiteSpace(country.Continent)
             ? country.Continent
             : ContinentName(Value(row, "continent"));
@@ -239,7 +333,9 @@ public sealed class StartupInitializer(
             Name = Truncate(Value(row, "name"), 120),
             CountryCode = Truncate(countryCode, 2),
             CountryName = Truncate(country.Name, 80),
-            Continent = Truncate(continent, 32)
+            Continent = Truncate(continent, 32),
+            Latitude = latitude,
+            Longitude = longitude
         };
     }
 
@@ -256,6 +352,12 @@ public sealed class StartupInitializer(
         }
 
         countries.TryGetValue(countryCode, out var country);
+        var coordinates = group
+            .Where(row => TryReadCoordinate(row, out _, out _))
+            .Select(row => (
+                Latitude: double.Parse(Value(row, "latitude_deg"), CultureInfo.InvariantCulture),
+                Longitude: double.Parse(Value(row, "longitude_deg"), CultureInfo.InvariantCulture)))
+            .ToList();
         var primaryAirportCode = group
             .Select(row => Value(row, "iata_code"))
             .FirstOrDefault(code => code.Length == 3);
@@ -270,8 +372,17 @@ public sealed class StartupInitializer(
             Name = Truncate(cityName, 120),
             CountryCode = Truncate(countryCode, 2),
             CountryName = Truncate(country.Name, 80),
-            Continent = Truncate(country.Continent, 32)
+            Continent = Truncate(country.Continent, 32),
+            Latitude = coordinates.Count == 0 ? null : coordinates.Average(coordinate => coordinate.Latitude),
+            Longitude = coordinates.Count == 0 ? null : coordinates.Average(coordinate => coordinate.Longitude)
         };
+    }
+
+    private static bool TryReadCoordinate(Dictionary<string, string> row, out double latitude, out double longitude)
+    {
+        var hasLatitude = double.TryParse(Value(row, "latitude_deg"), NumberStyles.Float, CultureInfo.InvariantCulture, out latitude);
+        var hasLongitude = double.TryParse(Value(row, "longitude_deg"), NumberStyles.Float, CultureInfo.InvariantCulture, out longitude);
+        return hasLatitude && hasLongitude;
     }
 
     private string BuildDefaultSettingsJson(IntegrationKind kind)
@@ -288,7 +399,8 @@ public sealed class StartupInitializer(
                 BodyTemplate = configuration["FLIGHT_PROVIDER_BODY_TEMPLATE"] ?? "",
                 PriceJsonPath = configuration["FLIGHT_PROVIDER_PRICE_JSON_PATH"] ?? "$.offers[0].price",
                 CurrencyJsonPath = configuration["FLIGHT_PROVIDER_CURRENCY_JSON_PATH"] ?? "$.offers[0].currency",
-                UrlJsonPath = configuration["FLIGHT_PROVIDER_URL_JSON_PATH"] ?? "$.offers[0].url"
+                UrlJsonPath = configuration["FLIGHT_PROVIDER_URL_JSON_PATH"] ?? "$.offers[0].url",
+                AlertScanIntervalMinutes = AlertScanOptions.DefaultIntervalMinutes
             }),
             IntegrationKind.Email => Serialize(new EmailOptions
             {
@@ -322,41 +434,41 @@ public sealed class StartupInitializer(
     {
         var continents = new[]
         {
-            ("AF", "Africa", "Africa"),
-            ("AN", "Antarctica", "Antarctica"),
-            ("AS", "Asia", "Asia"),
-            ("EU", "Europe", "Europe"),
-            ("NA", "North America", "North America"),
-            ("SA", "South America", "South America"),
-            ("OC", "Oceania", "Oceania")
+            ("AF", "Africa", "Africa", 1.65, 17.8),
+            ("AN", "Antarctica", "Antarctica", -82.8, 0.0),
+            ("AS", "Asia", "Asia", 34.0, 100.0),
+            ("EU", "Europe", "Europe", 54.5, 15.0),
+            ("NA", "North America", "North America", 48.2, -100.0),
+            ("SA", "South America", "South America", -14.6, -58.4),
+            ("OC", "Oceania", "Oceania", -25.0, 134.0)
         };
 
-        foreach (var (code, name, continent) in continents)
+        foreach (var (code, name, continent, latitude, longitude) in continents)
         {
-            yield return new FlightLocation { Type = LocationType.Continent, Code = code, Name = name, Continent = continent };
+            yield return new FlightLocation { Type = LocationType.Continent, Code = code, Name = name, Continent = continent, Latitude = latitude, Longitude = longitude };
         }
 
         var airports = new[]
         {
-            ("JFK", "New York JFK", "US", "United States", "North America"),
-            ("LAX", "Los Angeles", "US", "United States", "North America"),
-            ("YYZ", "Toronto Pearson", "CA", "Canada", "North America"),
-            ("LHR", "London Heathrow", "GB", "United Kingdom", "Europe"),
-            ("CDG", "Paris Charles de Gaulle", "FR", "France", "Europe"),
-            ("AMS", "Amsterdam Schiphol", "NL", "Netherlands", "Europe"),
-            ("CMN", "Casablanca Mohammed V", "MA", "Morocco", "Africa"),
-            ("CAI", "Cairo", "EG", "Egypt", "Africa"),
-            ("JNB", "Johannesburg OR Tambo", "ZA", "South Africa", "Africa"),
-            ("DXB", "Dubai", "AE", "United Arab Emirates", "Asia"),
-            ("SIN", "Singapore Changi", "SG", "Singapore", "Asia"),
-            ("HND", "Tokyo Haneda", "JP", "Japan", "Asia"),
-            ("SYD", "Sydney", "AU", "Australia", "Oceania"),
-            ("AKL", "Auckland", "NZ", "New Zealand", "Oceania"),
-            ("GRU", "Sao Paulo Guarulhos", "BR", "Brazil", "South America"),
-            ("EZE", "Buenos Aires Ezeiza", "AR", "Argentina", "South America")
+            ("JFK", "New York JFK", "US", "United States", "North America", 40.6413, -73.7781),
+            ("LAX", "Los Angeles", "US", "United States", "North America", 33.9416, -118.4085),
+            ("YYZ", "Toronto Pearson", "CA", "Canada", "North America", 43.6777, -79.6248),
+            ("LHR", "London Heathrow", "GB", "United Kingdom", "Europe", 51.4700, -0.4543),
+            ("CDG", "Paris Charles de Gaulle", "FR", "France", "Europe", 49.0097, 2.5479),
+            ("AMS", "Amsterdam Schiphol", "NL", "Netherlands", "Europe", 52.3105, 4.7683),
+            ("CMN", "Casablanca Mohammed V", "MA", "Morocco", "Africa", 33.3675, -7.5898),
+            ("CAI", "Cairo", "EG", "Egypt", "Africa", 30.1120, 31.4000),
+            ("JNB", "Johannesburg OR Tambo", "ZA", "South Africa", "Africa", -26.1337, 28.2420),
+            ("DXB", "Dubai", "AE", "United Arab Emirates", "Asia", 25.2532, 55.3657),
+            ("SIN", "Singapore Changi", "SG", "Singapore", "Asia", 1.3644, 103.9915),
+            ("HND", "Tokyo Haneda", "JP", "Japan", "Asia", 35.5494, 139.7798),
+            ("SYD", "Sydney", "AU", "Australia", "Oceania", -33.9399, 151.1753),
+            ("AKL", "Auckland", "NZ", "New Zealand", "Oceania", -37.0082, 174.7850),
+            ("GRU", "Sao Paulo Guarulhos", "BR", "Brazil", "South America", -23.4356, -46.4731),
+            ("EZE", "Buenos Aires Ezeiza", "AR", "Argentina", "South America", -34.8222, -58.5358)
         };
 
-        foreach (var (code, name, countryCode, countryName, continent) in airports)
+        foreach (var (code, name, countryCode, countryName, continent, latitude, longitude) in airports)
         {
             yield return new FlightLocation
             {
@@ -365,29 +477,31 @@ public sealed class StartupInitializer(
                 Name = name,
                 CountryCode = countryCode,
                 CountryName = countryName,
-                Continent = continent
+                Continent = continent,
+                Latitude = latitude,
+                Longitude = longitude
             };
         }
 
         var cities = new[]
         {
-            ("NYC", "New York", "US", "United States", "North America"),
-            ("LON", "London", "GB", "United Kingdom", "Europe"),
-            ("PAR", "Paris", "FR", "France", "Europe"),
-            ("AMS", "Amsterdam", "NL", "Netherlands", "Europe"),
-            ("CAS", "Casablanca", "MA", "Morocco", "Africa"),
-            ("CAI", "Cairo", "EG", "Egypt", "Africa"),
-            ("JNB", "Johannesburg", "ZA", "South Africa", "Africa"),
-            ("DXB", "Dubai", "AE", "United Arab Emirates", "Asia"),
-            ("SIN", "Singapore", "SG", "Singapore", "Asia"),
-            ("TYO", "Tokyo", "JP", "Japan", "Asia"),
-            ("SYD", "Sydney", "AU", "Australia", "Oceania"),
-            ("AKL", "Auckland", "NZ", "New Zealand", "Oceania"),
-            ("SAO", "Sao Paulo", "BR", "Brazil", "South America"),
-            ("BUE", "Buenos Aires", "AR", "Argentina", "South America")
+            ("NYC", "New York", "US", "United States", "North America", 40.7128, -74.0060),
+            ("LON", "London", "GB", "United Kingdom", "Europe", 51.5072, -0.1276),
+            ("PAR", "Paris", "FR", "France", "Europe", 48.8566, 2.3522),
+            ("AMS", "Amsterdam", "NL", "Netherlands", "Europe", 52.3676, 4.9041),
+            ("CAS", "Casablanca", "MA", "Morocco", "Africa", 33.5731, -7.5898),
+            ("CAI", "Cairo", "EG", "Egypt", "Africa", 30.0444, 31.2357),
+            ("JNB", "Johannesburg", "ZA", "South Africa", "Africa", -26.2041, 28.0473),
+            ("DXB", "Dubai", "AE", "United Arab Emirates", "Asia", 25.2048, 55.2708),
+            ("SIN", "Singapore", "SG", "Singapore", "Asia", 1.3521, 103.8198),
+            ("TYO", "Tokyo", "JP", "Japan", "Asia", 35.6762, 139.6503),
+            ("SYD", "Sydney", "AU", "Australia", "Oceania", -33.8688, 151.2093),
+            ("AKL", "Auckland", "NZ", "New Zealand", "Oceania", -36.8509, 174.7645),
+            ("SAO", "Sao Paulo", "BR", "Brazil", "South America", -23.5558, -46.6396),
+            ("BUE", "Buenos Aires", "AR", "Argentina", "South America", -34.6037, -58.3816)
         };
 
-        foreach (var (code, name, countryCode, countryName, continent) in cities)
+        foreach (var (code, name, countryCode, countryName, continent, latitude, longitude) in cities)
         {
             yield return new FlightLocation
             {
@@ -396,20 +510,31 @@ public sealed class StartupInitializer(
                 Name = name,
                 CountryCode = countryCode,
                 CountryName = countryName,
-                Continent = continent
+                Continent = continent,
+                Latitude = latitude,
+                Longitude = longitude
             };
         }
 
-        foreach (var country in airports.Select(a => (a.Item3, a.Item4, a.Item5)).Distinct())
+        foreach (var country in airports
+            .GroupBy(airport => (Code: airport.Item3, Name: airport.Item4, Continent: airport.Item5))
+            .Select(group => (
+                group.Key.Code,
+                group.Key.Name,
+                group.Key.Continent,
+                Latitude: group.Average(airport => airport.Item6),
+                Longitude: group.Average(airport => airport.Item7))))
         {
             yield return new FlightLocation
             {
                 Type = LocationType.Country,
-                Code = country.Item1,
-                Name = country.Item2,
-                CountryCode = country.Item1,
-                CountryName = country.Item2,
-                Continent = country.Item3
+                Code = country.Code,
+                Name = country.Name,
+                CountryCode = country.Code,
+                CountryName = country.Name,
+                Continent = country.Continent,
+                Latitude = country.Latitude,
+                Longitude = country.Longitude
             };
         }
     }

@@ -37,13 +37,9 @@ POSTGRES_SSL_MODE=Disable
 
 All deployment-sensitive values should be supplied through environment variables or Portainer secrets/env management. Do not commit `.env`.
 
-Email, WhatsApp, mobile notification settings, and the SerpApi key are configured in the app after setup from the admin pages.
+Email, WhatsApp, mobile notification settings, the SerpApi key, and the alert scan interval are configured in the app after setup from the admin pages.
 
-Price alerts are scanned every 3 hours by default. Override this with:
-
-```text
-ALERT_SCAN_INTERVAL_MINUTES=180
-```
+Price alerts are scanned every 3 hours by default. Change the cadence from `Admin > Flight API`; the allowed range is 15 minutes to 7 days.
 
 ## Run Locally
 

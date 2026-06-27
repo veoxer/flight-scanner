@@ -97,6 +97,48 @@
             <button type="submit" class="btn btn-primary flight-search-button">@T("Search")</button>
         </div>
 
+        <section class="route-map-panel" data-route-map>
+            <div class="route-map-copy">
+                <span>@T("RouteMap")</span>
+                <strong data-route-map-title>@T("AwaitingRoute")</strong>
+            </div>
+            <svg class="route-map" viewBox="0 0 960 420" role="img" aria-label="@T("RouteMap")">
+                <defs>
+                    <filter id="routePinGlow" x="-80%" y="-80%" width="260%" height="260%">
+                        <feGaussianBlur stdDeviation="5" result="blur" />
+                        <feMerge>
+                            <feMergeNode in="blur" />
+                            <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                    </filter>
+                </defs>
+                <rect class="route-map-water" width="960" height="420" rx="8" />
+                <path class="route-map-grid" d="M120 24v372M240 24v372M360 24v372M480 24v372M600 24v372M720 24v372M840 24v372M40 92h880M40 164h880M40 236h880M40 308h880" />
+                <path class="route-map-land" d="M98 125c39-47 126-62 177-37 32 16 36 42 69 52 46 14 61-24 106-10 43 13 53 50 36 82-21 39-77 42-116 65-40 24-45 69-99 77-57 8-102-28-125-71-34-61-92-105-48-158Z" />
+                <path class="route-map-land" d="M352 115c31-45 91-60 141-43 28 10 40 36 73 37 49 2 67-43 122-27 55 15 53 60 101 81 35 15 70 4 95 28 32 31 4 79-41 84-36 4-55-21-91-9-31 10-38 41-73 47-47 7-71-39-112-35-45 5-62 65-110 54-38-9-29-52-62-75-34-24-76-20-89-59-9-27 30-47 46-83Z" />
+                <path class="route-map-land" d="M488 249c55-27 117-8 135 44 15 45-19 102-61 122-39 18-88-5-105-47-19-46-7-100 31-119Z" />
+                <path class="route-map-land" d="M726 263c35-18 90-8 114 21 27 33 17 79-19 99-35 19-89 9-113-22-24-31-19-78 18-98Z" />
+                <path class="route-map-land" d="M306 279c32 15 48 43 43 75-5 31-29 56-56 59-29 3-49-19-49-49 1-35 27-71 62-85Z" />
+                <path class="route-map-route" data-route-line d="" hidden />
+                <g class="route-map-plane" data-route-plane hidden>
+                    <circle r="18" />
+                    <path d="M-1-11 15 2 2 5-3 15-7 15-5 5-17 2-17-2-5-5-7-15-3-15Z" />
+                </g>
+                <g class="route-map-pin origin-pin" data-route-pin="origin" hidden>
+                    <circle r="8" />
+                    <path d="M0-28c13 0 23 10 23 23 0 18-23 41-23 41S-23 13-23-5C-23-18-13-28 0-28Z" />
+                    <circle cy="-5" r="7" />
+                    <text y="55" text-anchor="middle" data-route-label="origin"></text>
+                </g>
+                <g class="route-map-pin destination-pin" data-route-pin="destination" hidden>
+                    <circle r="8" />
+                    <path d="M0-28c13 0 23 10 23 23 0 18-23 41-23 41S-23 13-23-5C-23-18-13-28 0-28Z" />
+                    <circle cy="-5" r="7" />
+                    <text y="55" text-anchor="middle" data-route-label="destination"></text>
+                </g>
+            </svg>
+        </section>
+
         <div class="flight-filter-row">
             <label class="filter-check">
                 <input type="checkbox" name="originNearby" value="true" checked="@OriginNearby" />

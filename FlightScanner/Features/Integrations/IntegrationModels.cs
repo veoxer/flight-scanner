@@ -42,6 +42,7 @@ public sealed class FlightProviderOptions
     public string CurrencyJsonPath { get; set; } = "$.offers[0].currency";
     public string UrlJsonPath { get; set; } = "$.offers[0].url";
     public string SerpApiApiKey { get; set; } = "";
+    public int AlertScanIntervalMinutes { get; set; } = 180;
 }
 
 public sealed class EmailOptions

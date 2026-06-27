@@ -45,6 +45,49 @@
         { code: "ZAR", symbol: "R", name: "South African Rand" },
         { code: "INR", symbol: "₹", name: "Indian Rupee" }
     ];
+    var routeLocationFallbacks = {
+        "AF": { label: "Africa", lat: 1.65, lng: 17.8 },
+        "AFRICA": { label: "Africa", lat: 1.65, lng: 17.8 },
+        "AN": { label: "Antarctica", lat: -82.8, lng: 0 },
+        "ANTARCTICA": { label: "Antarctica", lat: -82.8, lng: 0 },
+        "AS": { label: "Asia", lat: 34, lng: 100 },
+        "ASIA": { label: "Asia", lat: 34, lng: 100 },
+        "EU": { label: "Europe", lat: 54.5, lng: 15 },
+        "EUROPE": { label: "Europe", lat: 54.5, lng: 15 },
+        "NA": { label: "North America", lat: 48.2, lng: -100 },
+        "NORTH AMERICA": { label: "North America", lat: 48.2, lng: -100 },
+        "OC": { label: "Oceania", lat: -25, lng: 134 },
+        "OCEANIA": { label: "Oceania", lat: -25, lng: 134 },
+        "SA": { label: "South America", lat: -14.6, lng: -58.4 },
+        "SOUTH AMERICA": { label: "South America", lat: -14.6, lng: -58.4 },
+        "JFK": { label: "JFK", lat: 40.6413, lng: -73.7781 },
+        "LAX": { label: "LAX", lat: 33.9416, lng: -118.4085 },
+        "YYZ": { label: "YYZ", lat: 43.6777, lng: -79.6248 },
+        "LHR": { label: "LHR", lat: 51.47, lng: -0.4543 },
+        "CDG": { label: "CDG", lat: 49.0097, lng: 2.5479 },
+        "AMS": { label: "AMS", lat: 52.3105, lng: 4.7683 },
+        "CMN": { label: "CMN", lat: 33.3675, lng: -7.5898 },
+        "CAI": { label: "CAI", lat: 30.112, lng: 31.4 },
+        "JNB": { label: "JNB", lat: -26.1337, lng: 28.242 },
+        "DXB": { label: "DXB", lat: 25.2532, lng: 55.3657 },
+        "SIN": { label: "SIN", lat: 1.3644, lng: 103.9915 },
+        "HND": { label: "HND", lat: 35.5494, lng: 139.7798 },
+        "SYD": { label: "SYD", lat: -33.9399, lng: 151.1753 },
+        "AKL": { label: "AKL", lat: -37.0082, lng: 174.785 },
+        "GRU": { label: "GRU", lat: -23.4356, lng: -46.4731 },
+        "EZE": { label: "EZE", lat: -34.8222, lng: -58.5358 },
+        "NEW YORK": { label: "New York", lat: 40.7128, lng: -74.006 },
+        "LONDON": { label: "London", lat: 51.5072, lng: -0.1276 },
+        "PARIS": { label: "Paris", lat: 48.8566, lng: 2.3522 },
+        "CASABLANCA": { label: "Casablanca", lat: 33.5731, lng: -7.5898 },
+        "MOROCCO": { label: "Morocco", lat: 31.8, lng: -7.1 },
+        "FRANCE": { label: "France", lat: 46.2, lng: 2.2 },
+        "UNITED KINGDOM": { label: "United Kingdom", lat: 54.2, lng: -2.7 },
+        "UNITED STATES": { label: "United States", lat: 39.8, lng: -98.6 },
+        "CANADA": { label: "Canada", lat: 56.1, lng: -106.3 },
+        "EGYPT": { label: "Egypt", lat: 26.8, lng: 30.8 },
+        "SOUTH AFRICA": { label: "South Africa", lat: -30.6, lng: 22.9 }
+    };
 
     function maskDateField(field) {
         var digits = field.value.replace(/\D/g, "").slice(0, 8);
@@ -240,10 +283,20 @@
             var destinationType = root.querySelector("[data-location-type='destination']");
             var originValue = origin.value;
             var originTypeValue = originType.value;
+            var originLat = origin.dataset.locationLat || "";
+            var originLng = origin.dataset.locationLng || "";
+            var originLabel = origin.dataset.locationLabel || "";
             origin.value = destination.value;
             destination.value = originValue;
             originType.value = destinationType.value;
             destinationType.value = originTypeValue;
+            origin.dataset.locationLat = destination.dataset.locationLat || "";
+            origin.dataset.locationLng = destination.dataset.locationLng || "";
+            origin.dataset.locationLabel = destination.dataset.locationLabel || "";
+            destination.dataset.locationLat = originLat;
+            destination.dataset.locationLng = originLng;
+            destination.dataset.locationLabel = originLabel;
+            updateRouteMap(root);
         });
     }
 
@@ -410,7 +463,7 @@
         syncOptions();
     }
 
-    function createOption(item, input, typeInput, menu) {
+    function createOption(item, input, typeInput, menu, root) {
         var button = document.createElement("button");
         button.type = "button";
         button.className = "location-option";
@@ -423,9 +476,145 @@
             event.preventDefault();
             input.value = item.value;
             typeInput.value = item.type;
+            input.dataset.locationLat = item.latitude == null ? "" : String(item.latitude);
+            input.dataset.locationLng = item.longitude == null ? "" : String(item.longitude);
+            input.dataset.locationLabel = item.primary || item.value;
             menu.hidden = true;
+            updateRouteMap(root);
         });
         return button;
+    }
+
+    function normalizeRouteKey(value) {
+        return (value || "")
+            .split(" - ")[0]
+            .split("·")[0]
+            .trim()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toUpperCase();
+    }
+
+    function readDatasetCoordinate(input) {
+        var lat = Number(input.dataset.locationLat);
+        var lng = Number(input.dataset.locationLng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            return {
+                label: input.dataset.locationLabel || input.value.trim(),
+                lat: lat,
+                lng: lng
+            };
+        }
+
+        return null;
+    }
+
+    function resolveRouteLocation(input) {
+        if (!input || !input.value.trim()) {
+            return null;
+        }
+
+        var dataset = readDatasetCoordinate(input);
+        if (dataset) {
+            return dataset;
+        }
+
+        var key = normalizeRouteKey(input.value);
+        var fallback = routeLocationFallbacks[key];
+        if (fallback) {
+            return fallback;
+        }
+
+        if (key.length > 3) {
+            fallback = routeLocationFallbacks[key.slice(0, 3)];
+            if (fallback) {
+                return fallback;
+            }
+        }
+
+        return null;
+    }
+
+    function projectRoutePoint(location) {
+        var lng = Math.max(-180, Math.min(180, location.lng));
+        var lat = Math.max(-85, Math.min(85, location.lat));
+        return {
+            x: 40 + ((lng + 180) / 360) * 880,
+            y: 28 + ((85 - lat) / 170) * 364
+        };
+    }
+
+    function setPin(pin, label, point, value) {
+        pin.hidden = false;
+        pin.setAttribute("transform", "translate(" + point.x.toFixed(1) + " " + point.y.toFixed(1) + ")");
+        label.textContent = (value || "").slice(0, 22);
+    }
+
+    function midpointOnCurve(start, control, end, t) {
+        var inverse = 1 - t;
+        return {
+            x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+            y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y
+        };
+    }
+
+    function updateRouteMap(root) {
+        var panel = root.querySelector("[data-route-map]");
+        if (!panel) {
+            return;
+        }
+
+        var originInput = root.querySelector("[data-location-input='origin']");
+        var destinationInput = root.querySelector("[data-location-input='destination']");
+        var title = panel.querySelector("[data-route-map-title]");
+        var line = panel.querySelector("[data-route-line]");
+        var plane = panel.querySelector("[data-route-plane]");
+        var originPin = panel.querySelector("[data-route-pin='origin']");
+        var destinationPin = panel.querySelector("[data-route-pin='destination']");
+        var originLabel = panel.querySelector("[data-route-label='origin']");
+        var destinationLabel = panel.querySelector("[data-route-label='destination']");
+        var origin = resolveRouteLocation(originInput);
+        var destination = resolveRouteLocation(destinationInput);
+
+        originPin.hidden = true;
+        destinationPin.hidden = true;
+        line.hidden = true;
+        plane.hidden = true;
+
+        if (origin) {
+            setPin(originPin, originLabel, projectRoutePoint(origin), origin.label || originInput.value);
+        }
+
+        if (destination) {
+            setPin(destinationPin, destinationLabel, projectRoutePoint(destination), destination.label || destinationInput.value);
+        }
+
+        if (origin && destination) {
+            var start = projectRoutePoint(origin);
+            var end = projectRoutePoint(destination);
+            var distance = Math.hypot(end.x - start.x, end.y - start.y);
+            var lift = Math.max(46, Math.min(132, distance * 0.22));
+            var control = {
+                x: (start.x + end.x) / 2,
+                y: Math.min(start.y, end.y) - lift
+            };
+            var middle = midpointOnCurve(start, control, end, 0.5);
+            var angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
+            line.setAttribute("d", "M" + start.x.toFixed(1) + " " + start.y.toFixed(1) + " Q" + control.x.toFixed(1) + " " + control.y.toFixed(1) + " " + end.x.toFixed(1) + " " + end.y.toFixed(1));
+            line.hidden = false;
+            plane.setAttribute("transform", "translate(" + middle.x.toFixed(1) + " " + middle.y.toFixed(1) + ") rotate(" + angle.toFixed(1) + ")");
+            plane.hidden = false;
+            title.textContent = (origin.label || originInput.value) + " → " + (destination.label || destinationInput.value);
+        } else if (origin) {
+            title.textContent = origin.label || originInput.value;
+        } else if (destination) {
+            title.textContent = destination.label || destinationInput.value;
+        } else {
+            title.textContent = title.getAttribute("data-default-title") || title.textContent;
+            if (!title.getAttribute("data-default-title")) {
+                title.setAttribute("data-default-title", title.textContent);
+            }
+        }
     }
 
     function bindLocationAutocomplete(root) {
@@ -449,6 +638,10 @@
             input.addEventListener("blur", close);
             input.addEventListener("input", function () {
                 var query = input.value.trim();
+                input.dataset.locationLat = "";
+                input.dataset.locationLng = "";
+                input.dataset.locationLabel = "";
+                updateRouteMap(root);
                 if (query.length < 2) {
                     menu.hidden = true;
                     menu.replaceChildren();
@@ -478,7 +671,7 @@
                         }
 
                         items.forEach(function (item) {
-                            menu.appendChild(createOption(item, input, typeInput, menu));
+                            menu.appendChild(createOption(item, input, typeInput, menu, root));
                         });
                         menu.hidden = false;
                     })
@@ -489,6 +682,29 @@
                     });
             });
         });
+    }
+
+    function bindRouteMap(root) {
+        var title = root.querySelector("[data-route-map-title]");
+        if (title && !title.getAttribute("data-default-title")) {
+            title.setAttribute("data-default-title", title.textContent);
+        }
+
+        if (root.dataset.boundRouteMap === "true") {
+            updateRouteMap(root);
+            return;
+        }
+
+        root.dataset.boundRouteMap = "true";
+        root.querySelectorAll("[data-location-input]").forEach(function (input) {
+            input.addEventListener("change", function () {
+                updateRouteMap(root);
+            });
+            input.addEventListener("blur", function () {
+                updateRouteMap(root);
+            });
+        });
+        updateRouteMap(root);
     }
 
     function cabinText(value) {
@@ -569,6 +785,7 @@
         bindRouteSwap(root);
         bindDatePair(root);
         bindLocationAutocomplete(root);
+        bindRouteMap(root);
         bindTravellerPanel(root);
         bindCurrencyCombobox(root);
         bindAlertTargets(root);

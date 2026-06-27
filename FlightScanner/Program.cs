@@ -40,12 +40,6 @@ builder.Services.AddScoped<SetupState>();
 builder.Services.AddScoped<IFlightSearchService, FlightSearchService>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 builder.Services.AddSingleton<StartupInitializer>();
-builder.Services.Configure<AlertScanOptions>(options =>
-{
-    options.IntervalMinutes = int.TryParse(builder.Configuration["ALERT_SCAN_INTERVAL_MINUTES"], out var minutes)
-        ? minutes
-        : 180;
-});
 builder.Services.AddHostedService<AlertScannerService>();
 
 builder.Services.AddAuthentication(options =>
@@ -216,7 +210,9 @@ app.MapGet("/api/locations/suggest", async (
                 LocationType.Continent => UiText.T("Continent"),
                 LocationType.Country => $"{location.Continent} · {UiText.T("Country")}",
                 _ => $"{location.CountryName} · {location.Continent}"
-            }
+            },
+            latitude = location.Latitude,
+            longitude = location.Longitude
         });
 
     return Results.Ok(suggestions);
@@ -240,6 +236,10 @@ app.MapPost("/admin/integrations/save", async (
     var apiKey = form.TryGetValue("apiKey", out var apiKeyValues)
         ? apiKeyValues.ToString().Trim()
         : "";
+    var scanIntervalMinutes = form.TryGetValue("alertScanIntervalMinutes", out var intervalValues) &&
+        int.TryParse(intervalValues.ToString(), out var parsedInterval)
+        ? AlertScanOptions.NormalizeMinutes(parsedInterval)
+        : AlertScanOptions.DefaultIntervalMinutes;
 
     await using var db = await dbFactory.CreateDbContextAsync();
     var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
@@ -249,12 +249,17 @@ app.MapPost("/admin/integrations/save", async (
         db.IntegrationSettings.Add(setting);
     }
 
+    var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(
+        setting.SettingsJson,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+    options.ProviderType = "SerpApi";
+    options.SerpApiApiKey = apiKey;
+    options.AlertScanIntervalMinutes = scanIntervalMinutes;
+
     setting.Enabled = enabled;
-    setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(new FlightProviderOptions
-    {
-        ProviderType = "SerpApi",
-        SerpApiApiKey = apiKey
-    }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+    setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(
+        options,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
     setting.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
 

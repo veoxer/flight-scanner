@@ -32,6 +32,8 @@ public sealed class FlightLocation
     public string? CountryName { get; set; }
     [MaxLength(32)]
     public string Continent { get; set; } = "";
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
 }
 
 public sealed record FlightSearchQuery(
