@@ -65,6 +65,12 @@ For Portainer, create a stack from `docker-compose.yml`, add environment values 
 
 The container listens on port `8080` internally and is bound to `18080` on the host. That makes it reachable on your LAN, for example `http://192.168.11.120:18080`, while nginx can still proxy `flight.veoxer.com` to `http://127.0.0.1:18080`. A starter nginx server block is in `deploy/nginx.flight.veoxer.com.conf`.
 
+For LAN access, `AllowedHosts` must include the LAN IP too:
+
+```text
+AllowedHosts=flight.veoxer.com;192.168.11.120;localhost
+```
+
 ## Flight Data
 
 The app ships with a deterministic demo fare engine so the search and alert workflow works immediately. Real fare pricing needs a data provider. To avoid baking in a paid service or fragile scraping, configure a free, self-hosted, or personally available HTTP provider from `Admin > Integrations`.
