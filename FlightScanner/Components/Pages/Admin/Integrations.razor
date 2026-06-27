@@ -16,15 +16,17 @@
     <h2>@UiText.T("FlightProviderApi")</h2>
     <p class="settings-note">@UiText.T("FlightProviderText")</p>
 
-    <div class="form-check mb-3">
-        <input id="serpapi-enabled" class="form-check-input" type="checkbox" @bind="Input.Enabled" />
-        <label class="form-check-label" for="serpapi-enabled">@UiText.T("Enabled")</label>
-    </div>
+    <form method="post" action="/admin/integrations/save">
+        <div class="form-check mb-3">
+            <input id="serpapi-enabled" class="form-check-input" type="checkbox" name="enabled" value="true" checked="@Input.Enabled" />
+            <label class="form-check-label" for="serpapi-enabled">@UiText.T("Enabled")</label>
+        </div>
 
-    <label class="form-label" for="serpapi-key">@UiText.T("ApiKey")</label>
-    <input id="serpapi-key" class="form-control" type="password" @bind="Input.ApiKey" autocomplete="off" />
+        <label class="form-label" for="serpapi-key">@UiText.T("ApiKey")</label>
+        <input id="serpapi-key" class="form-control" type="password" name="apiKey" value="@Input.ApiKey" autocomplete="off" />
 
-    <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">@UiText.T("Save")</button>
+        <button type="submit" class="btn btn-primary mt-3">@UiText.T("Save")</button>
+    </form>
 </section>
 
 @code {
@@ -53,27 +55,6 @@
             Enabled = setting.Enabled,
             ApiKey = options.SerpApiApiKey
         };
-    }
-
-    private async Task SaveAsync()
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
-        if (setting is null)
-        {
-            setting = new IntegrationSetting { Kind = IntegrationKind.FlightProvider };
-            db.IntegrationSettings.Add(setting);
-        }
-
-        setting.Enabled = Input.Enabled;
-        setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(new FlightProviderOptions
-        {
-            ProviderType = "SerpApi",
-            SerpApiApiKey = Input.ApiKey.Trim()
-        }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        setting.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
-        saved = true;
     }
 
     private sealed class IntegrationForm
