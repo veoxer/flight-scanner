@@ -77,9 +77,16 @@
     private async Task LoadAsync()
     {
         rows = [];
-        foreach (var user in UserManager.Users.OrderBy(user => user.Email).ToList())
+        try
         {
-            rows.Add(new UserRow(user, await UserManager.GetRolesAsync(user)));
+            foreach (var user in UserManager.Users.OrderBy(user => user.Email).ToList())
+            {
+                rows.Add(new UserRow(user, await UserManager.GetRolesAsync(user)));
+            }
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
         }
     }
 

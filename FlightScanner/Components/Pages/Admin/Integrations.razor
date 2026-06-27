@@ -80,14 +80,20 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Input ??= await LoadInputAsync();
+        Input ??= new();
+        Input = await LoadInputAsync();
     }
 
     private async Task<FlightProviderForm> LoadInputAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         var setting = await db.IntegrationSettings.AsNoTracking()
-            .FirstAsync(item => item.Kind == IntegrationKind.FlightProvider);
+            .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
+        if (setting is null)
+        {
+            return new FlightProviderForm();
+        }
+
         var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(setting.SettingsJson, jsonOptions) ?? new();
         return FlightProviderForm.FromOptions(options, setting.Enabled);
     }
@@ -95,7 +101,14 @@
     private async Task SaveAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        var setting = await db.IntegrationSettings.FirstAsync(item => item.Kind == IntegrationKind.FlightProvider);
+        Input ??= new();
+        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
+        if (setting is null)
+        {
+            setting = new IntegrationSetting { Kind = IntegrationKind.FlightProvider };
+            db.IntegrationSettings.Add(setting);
+        }
+
         setting.Enabled = Input.Enabled;
         setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(Input.ToOptions(), jsonOptions);
         setting.UpdatedAt = DateTimeOffset.UtcNow;

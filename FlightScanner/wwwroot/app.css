@@ -825,7 +825,9 @@ h1:focus {
 
 .date-calendar-grid button.past {
     color: #9aa5b3;
+    cursor: pointer;
     opacity: 0.58;
+    pointer-events: auto;
 }
 
 .date-calendar-grid button.past:hover {

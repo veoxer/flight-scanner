@@ -89,6 +89,7 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddDefaultTokenProviders();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, ApplicationUserClaimsPrincipalFactory>();
 
 var dataProtectionKeysPath = builder.Configuration["FLIGHTSCANNER_DATA_PROTECTION_KEYS_PATH"];
 if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
