@@ -42,17 +42,21 @@ public sealed class StartupInitializer(
         }
 
         var existingLocations = await db.FlightLocations
-            .Select(location => new { location.Type, location.Code })
+            .Select(location => new { location.Type, location.Code, location.Name, location.CountryCode })
             .ToListAsync(cancellationToken);
         var existingLocationKeys = existingLocations
             .Select(location => $"{location.Type}:{location.Code}".ToUpperInvariant())
             .ToHashSet();
+        var existingLocationSemanticKeys = existingLocations
+            .Select(location => BuildLocationSemanticKey(location.Type, location.Name, location.CountryCode))
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var missingLocations = SeedLocations()
-            .Where(location => existingLocationKeys.Add($"{location.Type}:{location.Code}".ToUpperInvariant()))
+            .Where(location => ShouldAddLocation(location, existingLocationKeys, existingLocationSemanticKeys))
             .ToList();
         db.FlightLocations.AddRange(missingLocations);
 
-        var importedLocations = await TryImportWorldLocationsAsync(db, existingLocationKeys, cancellationToken);
+        var importedLocations = await TryImportWorldLocationsAsync(db, existingLocationKeys, existingLocationSemanticKeys, cancellationToken);
         db.FlightLocations.AddRange(importedLocations);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -101,8 +105,76 @@ public sealed class StartupInitializer(
                 CONSTRAINT "PK_FlightLocationIdentifiers" PRIMARY KEY ("Id")
             );
 
+            ALTER TABLE "FlightLocationIdentifiers"
+            ADD COLUMN IF NOT EXISTS "IdentifierType" character varying(32) NOT NULL DEFAULT 'FreebaseId';
+
+            UPDATE "FlightLocationIdentifiers"
+            SET "LocationCode" = UPPER(TRIM("LocationCode")),
+                "Provider" = CASE WHEN COALESCE(TRIM("Provider"), '') = '' THEN 'SerpApiGoogleFlights' ELSE TRIM("Provider") END,
+                "IdentifierType" = CASE WHEN COALESCE(TRIM("IdentifierType"), '') = '' THEN 'FreebaseId' ELSE TRIM("IdentifierType") END,
+                "Identifier" = TRIM("Identifier"),
+                "Source" = CASE WHEN COALESCE(TRIM("Source"), '') = '' THEN 'Wikidata' ELSE TRIM("Source") END;
+
+            UPDATE "FlightLocations"
+            SET "Code" = UPPER(TRIM("Code")),
+                "Name" = TRIM("Name"),
+                "CountryCode" = NULLIF(UPPER(TRIM(COALESCE("CountryCode", ''))), ''),
+                "CountryName" = NULLIF(TRIM(COALESCE("CountryName", '')), ''),
+                "Continent" = TRIM("Continent");
+
+            DELETE FROM "FlightLocationIdentifiers" duplicate
+            USING "FlightLocationIdentifiers" keeper
+            WHERE duplicate."Id" > keeper."Id"
+                AND duplicate."LocationType" = keeper."LocationType"
+                AND duplicate."LocationCode" = keeper."LocationCode"
+                AND duplicate."Provider" = keeper."Provider"
+                AND duplicate."IdentifierType" = keeper."IdentifierType";
+
+            DELETE FROM "FlightLocations" duplicate
+            USING "FlightLocations" keeper
+            WHERE duplicate."Id" > keeper."Id"
+                AND duplicate."Type" = keeper."Type"
+                AND duplicate."Code" = keeper."Code";
+
+            DELETE FROM "FlightLocations" duplicate
+            USING "FlightLocations" keeper
+            WHERE duplicate."Id" > keeper."Id"
+                AND duplicate."Type" = keeper."Type"
+                AND duplicate."Type" IN (1, 2, 3)
+                AND UPPER(duplicate."Name") = UPPER(keeper."Name")
+                AND COALESCE(UPPER(duplicate."CountryCode"), '') = COALESCE(UPPER(keeper."CountryCode"), '');
+
+            DELETE FROM "AppSettings" duplicate
+            USING "AppSettings" keeper
+            WHERE duplicate."Id" > keeper."Id"
+                AND duplicate."Key" = keeper."Key";
+
+            DELETE FROM "IntegrationSettings" duplicate
+            USING "IntegrationSettings" keeper
+            WHERE duplicate."Id" > keeper."Id"
+                AND duplicate."Kind" = keeper."Kind";
+
+            DROP INDEX IF EXISTS "IX_FlightLocationIdentifiers_LocationType_LocationCode_Provider";
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FlightLocations_Type_Code"
+            ON "FlightLocations" ("Type", "Code");
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FlightLocations_City_Name_Country"
+            ON "FlightLocations" ("Type", UPPER("Name"), COALESCE(UPPER("CountryCode"), ''))
+            WHERE "Type" = 1;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FlightLocations_Region_Name"
+            ON "FlightLocations" ("Type", UPPER("Name"))
+            WHERE "Type" IN (2, 3);
+
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_FlightLocationIdentifiers_LocationType_LocationCode_Provider_IdentifierType"
             ON "FlightLocationIdentifiers" ("LocationType", "LocationCode", "Provider", "IdentifierType");
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_AppSettings_Key"
+            ON "AppSettings" ("Key");
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_IntegrationSettings_Kind"
+            ON "IntegrationSettings" ("Kind");
 
             UPDATE "PriceAlerts"
             SET "MaxTargetPrice" = "TargetPrice"
@@ -122,6 +194,7 @@ public sealed class StartupInitializer(
     private async Task<IReadOnlyList<FlightLocation>> TryImportWorldLocationsAsync(
         ApplicationDbContext db,
         HashSet<string> existingLocationKeys,
+        HashSet<string> existingLocationSemanticKeys,
         CancellationToken cancellationToken)
     {
         var importEnabled = !bool.TryParse(configuration["LOCATION_DATA_IMPORT_ENABLED"], out var enabled) || enabled;
@@ -142,7 +215,7 @@ public sealed class StartupInitializer(
         {
             var importedLocations = await DownloadWorldLocationsAsync(cancellationToken);
             var missingLocations = importedLocations
-                .Where(location => existingLocationKeys.Add($"{location.Type}:{location.Code}".ToUpperInvariant()))
+                .Where(location => ShouldAddLocation(location, existingLocationKeys, existingLocationSemanticKeys))
                 .ToList();
 
             if (missingLocations.Count > 0)
@@ -411,11 +484,6 @@ public sealed class StartupInitializer(
                     }
 
                     var key = BuildCityIdentifierKey(name, iso);
-                    if (!localCityLookup.ContainsKey(key))
-                    {
-                        continue;
-                    }
-
                     var population = ReadSparqlLong(binding, "population");
                     if (!bestCandidates.TryGetValue(key, out var existing) || population > existing.Population)
                     {
@@ -540,6 +608,56 @@ public sealed class StartupInitializer(
         return $"{countryCode.Trim().ToUpperInvariant()}:{compactName}";
     }
 
+    private static bool ShouldAddLocation(
+        FlightLocation location,
+        HashSet<string> existingLocationKeys,
+        HashSet<string> existingLocationSemanticKeys)
+    {
+        var codeKey = $"{location.Type}:{location.Code}".ToUpperInvariant();
+        if (!existingLocationKeys.Add(codeKey))
+        {
+            return false;
+        }
+
+        var semanticKey = BuildLocationSemanticKey(location.Type, location.Name, location.CountryCode);
+        if (string.IsNullOrWhiteSpace(semanticKey))
+        {
+            return true;
+        }
+
+        if (!existingLocationSemanticKeys.Add(semanticKey))
+        {
+            existingLocationKeys.Remove(codeKey);
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string BuildLocationSemanticKey(LocationType type, string name, string? countryCode)
+    {
+        if (type is LocationType.Airport || string.IsNullOrWhiteSpace(name))
+        {
+            return "";
+        }
+
+        var countryPart = type is LocationType.City
+            ? countryCode?.Trim().ToUpperInvariant() ?? ""
+            : "";
+        return $"{type}:{countryPart}:{NormalizeLocationName(name)}";
+    }
+
+    private static string NormalizeLocationName(string name)
+    {
+        var normalized = name
+            .Normalize(NormalizationForm.FormD)
+            .Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            .Select(character => char.IsLetterOrDigit(character) ? char.ToUpperInvariant(character) : ' ')
+            .ToArray();
+
+        return string.Join(' ', new string(normalized).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
     private static async Task UpsertLocationIdentifierAsync(
         ApplicationDbContext db,
         LocationType locationType,
@@ -554,11 +672,16 @@ public sealed class StartupInitializer(
         }
 
         var normalizedCode = locationCode.Trim().ToUpperInvariant();
-        var existing = await db.FlightLocationIdentifiers.FirstOrDefaultAsync(item =>
+        var existing = db.FlightLocationIdentifiers.Local.FirstOrDefault(item =>
+            item.LocationType == locationType &&
+            item.LocationCode.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase) &&
+            item.Provider.Equals(GoogleFlightsProvider, StringComparison.OrdinalIgnoreCase) &&
+            item.IdentifierType.Equals(FreebaseIdentifierType, StringComparison.OrdinalIgnoreCase));
+
+        existing ??= await db.FlightLocationIdentifiers.FirstOrDefaultAsync(item =>
             item.LocationType == locationType &&
             item.LocationCode == normalizedCode &&
-            item.Provider == GoogleFlightsProvider &&
-            item.IdentifierType == FreebaseIdentifierType,
+            item.Provider == GoogleFlightsProvider,
             cancellationToken);
         if (existing is null)
         {
@@ -576,6 +699,8 @@ public sealed class StartupInitializer(
         }
 
         existing.Identifier = identifier.Trim();
+        existing.Provider = GoogleFlightsProvider;
+        existing.IdentifierType = FreebaseIdentifierType;
         existing.Source = source;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
     }
