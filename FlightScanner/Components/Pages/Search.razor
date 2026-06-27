@@ -104,6 +104,19 @@
             </div>
             <svg class="route-map" viewBox="0 0 960 420" role="img" aria-label="@T("RouteMap")">
                 <defs>
+                    <radialGradient id="routeMapGlow" cx="50%" cy="45%" r="68%">
+                        <stop offset="0%" stop-color="#0f5f76" stop-opacity="0.95" />
+                        <stop offset="58%" stop-color="#0b344f" stop-opacity="0.98" />
+                        <stop offset="100%" stop-color="#061b2c" stop-opacity="1" />
+                    </radialGradient>
+                    <linearGradient id="routeMapRouteGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#8ef6e4" />
+                        <stop offset="52%" stop-color="#f8d36b" />
+                        <stop offset="100%" stop-color="#ff8a4c" />
+                    </linearGradient>
+                    <marker id="routeMapArrow" viewBox="0 0 16 16" refX="14" refY="8" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+                        <path d="M1 1 15 8 1 15 5.5 8Z" />
+                    </marker>
                     <filter id="routePinGlow" x="-80%" y="-80%" width="260%" height="260%">
                         <feGaussianBlur stdDeviation="5" result="blur" />
                         <feMerge>
@@ -113,20 +126,29 @@
                     </filter>
                 </defs>
                 <rect class="route-map-water" width="960" height="420" rx="8" />
+                <path class="route-map-current" d="M0 104c114 24 205 20 305-14 130-44 203-39 333 24 110 53 196 57 322 15M0 294c111-31 205-22 320 30 115 52 222 56 350 4 94-38 188-49 290-17" />
                 <path class="route-map-grid" d="M120 24v372M240 24v372M360 24v372M480 24v372M600 24v372M720 24v372M840 24v372M40 92h880M40 164h880M40 236h880M40 308h880" />
                 <image class="route-map-countries" href="assets/world-map.svg" width="960" height="420" preserveAspectRatio="none" />
-                <path class="route-map-route" data-route-line d="" hidden />
+                <path class="route-map-route-shadow" data-route-shadow d="" hidden />
+                <path id="route-map-active-path" class="route-map-route" data-route-line d="" marker-end="url(#routeMapArrow)" hidden />
                 <g class="route-map-plane" data-route-plane hidden>
-                    <circle r="18" />
-                    <path d="M-1-11 15 2 2 5-3 15-7 15-5 5-17 2-17-2-5-5-7-15-3-15Z" />
+                    <animateMotion data-route-motion dur="4.8s" repeatCount="indefinite" rotate="auto">
+                        <mpath href="#route-map-active-path" />
+                    </animateMotion>
+                    <g>
+                        <circle r="18" />
+                        <path d="M-1-11 15 2 2 5-3 15-7 15-5 5-17 2-17-2-5-5-7-15-3-15Z" />
+                    </g>
                 </g>
                 <g class="route-map-pin origin-pin" data-route-pin="origin" hidden>
+                    <circle class="route-map-pin-pulse" r="17" />
                     <circle r="8" />
                     <path d="M0-28c13 0 23 10 23 23 0 18-23 41-23 41S-23 13-23-5C-23-18-13-28 0-28Z" />
                     <circle cy="-5" r="7" />
                     <text y="55" text-anchor="middle" data-route-label="origin"></text>
                 </g>
                 <g class="route-map-pin destination-pin" data-route-pin="destination" hidden>
+                    <circle class="route-map-pin-pulse" r="17" />
                     <circle r="8" />
                     <path d="M0-28c13 0 23 10 23 23 0 18-23 41-23 41S-23 13-23-5C-23-18-13-28 0-28Z" />
                     <circle cy="-5" r="7" />

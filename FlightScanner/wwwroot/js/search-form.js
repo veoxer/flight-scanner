@@ -550,14 +550,6 @@
         label.textContent = (value || "").slice(0, 22);
     }
 
-    function midpointOnCurve(start, control, end, t) {
-        var inverse = 1 - t;
-        return {
-            x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
-            y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y
-        };
-    }
-
     function updateRouteMap(root) {
         var panel = root.querySelector("[data-route-map]");
         if (!panel) {
@@ -568,7 +560,9 @@
         var destinationInput = root.querySelector("[data-location-input='destination']");
         var title = panel.querySelector("[data-route-map-title]");
         var line = panel.querySelector("[data-route-line]");
+        var shadow = panel.querySelector("[data-route-shadow]");
         var plane = panel.querySelector("[data-route-plane]");
+        var motion = panel.querySelector("[data-route-motion]");
         var originPin = panel.querySelector("[data-route-pin='origin']");
         var destinationPin = panel.querySelector("[data-route-pin='destination']");
         var originLabel = panel.querySelector("[data-route-label='origin']");
@@ -579,6 +573,7 @@
         originPin.hidden = true;
         destinationPin.hidden = true;
         line.hidden = true;
+        shadow.hidden = true;
         plane.hidden = true;
 
         if (origin) {
@@ -594,16 +589,20 @@
             var end = projectRoutePoint(destination);
             var distance = Math.hypot(end.x - start.x, end.y - start.y);
             var lift = Math.max(46, Math.min(132, distance * 0.22));
+            var direction = end.x >= start.x ? 1 : -1;
             var control = {
-                x: (start.x + end.x) / 2,
+                x: (start.x + end.x) / 2 + direction * Math.min(40, distance * 0.06),
                 y: Math.min(start.y, end.y) - lift
             };
-            var middle = midpointOnCurve(start, control, end, 0.5);
-            var angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
-            line.setAttribute("d", "M" + start.x.toFixed(1) + " " + start.y.toFixed(1) + " Q" + control.x.toFixed(1) + " " + control.y.toFixed(1) + " " + end.x.toFixed(1) + " " + end.y.toFixed(1));
+            var path = "M" + start.x.toFixed(1) + " " + start.y.toFixed(1) + " Q" + control.x.toFixed(1) + " " + control.y.toFixed(1) + " " + end.x.toFixed(1) + " " + end.y.toFixed(1);
+            line.setAttribute("d", path);
+            shadow.setAttribute("d", path);
             line.hidden = false;
-            plane.setAttribute("transform", "translate(" + middle.x.toFixed(1) + " " + middle.y.toFixed(1) + ") rotate(" + angle.toFixed(1) + ")");
+            shadow.hidden = false;
             plane.hidden = false;
+            if (motion && typeof motion.beginElement === "function") {
+                motion.beginElement();
+            }
             title.textContent = (origin.label || originInput.value) + " → " + (destination.label || destinationInput.value);
         } else if (origin) {
             title.textContent = origin.label || originInput.value;
