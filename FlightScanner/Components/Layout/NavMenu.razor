@@ -2,6 +2,8 @@
 @using FlightScanner.Features.Localization
 
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -52,7 +54,7 @@
                 </AuthorizeView>
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="Account/Manage">
-                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @context.User.Identity?.Name
+                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @(displayName ?? context.User.Identity?.Name)
                     </NavLink>
                 </div>
                 <div class="nav-item px-3">
@@ -83,11 +85,17 @@
 
 @code {
     private string? currentUrl;
+    private string? displayName;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(auth.User);
+        displayName = string.IsNullOrWhiteSpace(user?.DisplayName)
+            ? user?.Email
+            : user.DisplayName;
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)

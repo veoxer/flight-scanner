@@ -34,12 +34,18 @@
 
             <div class="travel-field compact-field">
                 <label for="depart">@T("Depart")</label>
-                <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
+                <div class="date-picker-field">
+                    <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
+                    <button type="button" class="date-picker-button" data-date-toggle="depart" aria-label="@T("Depart")">▦</button>
+                </div>
             </div>
 
             <div class="travel-field compact-field">
                 <label for="returnDate">@T("Return")</label>
-                <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
+                <div class="date-picker-field">
+                    <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
+                    <button type="button" class="date-picker-button" data-date-toggle="return" aria-label="@T("Return")">▦</button>
+                </div>
             </div>
 
             <div class="travel-field traveller-field">
@@ -151,8 +157,14 @@
         {
             <article class="result-card">
                 <div>
-                    <strong>@offer.Airline @offer.FlightNumber</strong>
-                    <span>@offer.Provider</span>
+                    <div class="airline-identity">
+                        <span class="airline-logo-fallback">@AirlineInitials(offer.Airline)</span>
+                        <img class="airline-logo" src="@AirlineLogoUrl(offer.Airline)" alt="" loading="lazy" onload="this.previousElementSibling.hidden=true" onerror="this.hidden=true" />
+                        <span>
+                            <strong>@offer.Airline @offer.FlightNumber</strong>
+                            <span>@offer.Provider</span>
+                        </span>
+                    </div>
                 </div>
                 <div>
                     <strong>@CurrencySymbol(offer.Currency) @offer.Price.ToString("0.##") @offer.Currency</strong>
@@ -249,7 +261,7 @@
     public string Currency { get; set; } = "USD";
 
     [Parameter, SupplyParameterFromQuery(Name = "targetPrice")]
-    public decimal TargetPrice { get; set; } = 400;
+    public string? TargetPrice { get; set; }
 
     private static readonly IReadOnlyList<CurrencyOption> Currencies =
     [
@@ -345,7 +357,7 @@
             MaxStops = query.MaxStops,
             CheckedBags = query.CheckedBags,
             Currency = query.Currency,
-            TargetPrice = TargetPrice
+            TargetPrice = ParseTargetPrice()
         });
         await db.SaveChangesAsync();
         message = T("AlertSaved");
@@ -391,6 +403,14 @@
         {
             departDate = returnDate.Value;
             returnDate = null;
+        }
+
+        if (SaveAlert && (string.IsNullOrWhiteSpace(TargetPrice) ||
+            !decimal.TryParse(TargetPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var targetPrice) ||
+            targetPrice <= 0))
+        {
+            validationMessage = T("AlertTargetRequired");
+            return false;
         }
 
         var originType = ParseLocationType(OriginType, Origin);
@@ -481,6 +501,58 @@
     private static string FormatDuration(TimeSpan duration)
     {
         return duration <= TimeSpan.Zero ? T("DurationUnavailable") : $"{(int)duration.TotalHours} h {duration.Minutes} m";
+    }
+
+    private decimal ParseTargetPrice()
+    {
+        return decimal.TryParse(TargetPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var value) && value > 0
+            ? value
+            : 0;
+    }
+
+    private static string AirlineLogoUrl(string airline)
+    {
+        var code = AirlineLogoCode(airline);
+        return $"https://images.kiwi.com/airlines/64/{Uri.EscapeDataString(code)}.png";
+    }
+
+    private static string AirlineLogoCode(string airline)
+    {
+        var trimmed = airline.Trim();
+        if (trimmed.Length is 2 or 3 && trimmed.All(char.IsLetterOrDigit))
+        {
+            return trimmed.ToUpperInvariant();
+        }
+
+        return trimmed.ToLowerInvariant() switch
+        {
+            "american airlines" => "AA",
+            "delta air lines" => "DL",
+            "united airlines" => "UA",
+            "british airways" => "BA",
+            "lufthansa" => "LH",
+            "air france" => "AF",
+            "klm" => "KL",
+            "iberia" => "IB",
+            "royal air maroc" => "AT",
+            "emirates" => "EK",
+            "qatar airways" => "QR",
+            "turkish airlines" => "TK",
+            "easyjet" => "U2",
+            "ryanair" => "FR",
+            _ => new string(trimmed.Where(char.IsLetterOrDigit).Take(2).Select(char.ToUpperInvariant).ToArray()).PadRight(2, 'X')
+        };
+    }
+
+    private static string AirlineInitials(string airline)
+    {
+        var words = airline.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length >= 2)
+        {
+            return string.Concat(words.Take(2).Select(word => char.ToUpperInvariant(word[0])));
+        }
+
+        return airline.Length >= 2 ? airline[..2].ToUpperInvariant() : airline.ToUpperInvariant();
     }
 
     private static string CabinLabel(CabinClass cabin)

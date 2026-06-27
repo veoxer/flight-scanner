@@ -148,6 +148,8 @@ public static class UiText
             ["Save"] = "Save",
             ["FlightProviderSaved"] = "Flight provider settings saved."
             ,
+            ["AlertTargetRequired"] = "Enter a target price before saving an alert."
+            ,
             ["Setup"] = "Setup",
             ["FirstOpening"] = "First opening",
             ["CreateAdminUser"] = "Create the admin user",
@@ -322,6 +324,8 @@ public static class UiText
             ["Save"] = "Enregistrer",
             ["FlightProviderSaved"] = "Paramètres du fournisseur enregistrés."
             ,
+            ["AlertTargetRequired"] = "Entrez un prix cible avant d’enregistrer une alerte."
+            ,
             ["Setup"] = "Configuration",
             ["FirstOpening"] = "Première ouverture",
             ["CreateAdminUser"] = "Créer l’utilisateur admin",
@@ -495,6 +499,8 @@ public static class UiText
             ["Enabled"] = "مفعل",
             ["Save"] = "حفظ",
             ["FlightProviderSaved"] = "تم حفظ إعدادات مزود الرحلات."
+            ,
+            ["AlertTargetRequired"] = "أدخل السعر المستهدف قبل حفظ التنبيه."
             ,
             ["Setup"] = "الإعداد",
             ["FirstOpening"] = "أول تشغيل",

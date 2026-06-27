@@ -27,6 +27,9 @@
             date.getFullYear();
     }
 
+    var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var dayNames = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
     function maskDateField(field) {
         var digits = field.value.replace(/\D/g, "").slice(0, 8);
         var pieces = [];
@@ -43,6 +46,124 @@
         field.value = pieces.join("/");
     }
 
+    function enforceDatePair(depart, ret, changedField) {
+        var departDate = parseDisplayDate(depart.value);
+        var returnDate = parseDisplayDate(ret.value);
+        var min = todayDate();
+
+        if (changedField === depart && departDate) {
+            if (departDate < min) {
+                depart.value = "";
+                return;
+            }
+
+            depart.value = formatDisplayDate(departDate);
+            if (returnDate && departDate > returnDate) {
+                ret.value = formatDisplayDate(departDate);
+                depart.value = "";
+            }
+        }
+
+        if (changedField === ret && returnDate) {
+            if (returnDate < min) {
+                ret.value = "";
+                return;
+            }
+
+            ret.value = formatDisplayDate(returnDate);
+            if (departDate && returnDate < departDate) {
+                depart.value = formatDisplayDate(returnDate);
+                ret.value = "";
+            }
+        }
+    }
+
+    function renderCalendar(field, depart, ret, visibleDate) {
+        var wrapper = field.closest(".date-picker-field");
+        var existing = wrapper.querySelector(".date-calendar");
+        if (existing) {
+            existing.remove();
+        }
+
+        var selected = parseDisplayDate(field.value);
+        var today = todayDate();
+        var month = new Date(visibleDate.getFullYear(), visibleDate.getMonth(), 1);
+        var firstDay = (month.getDay() + 6) % 7;
+        var daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+        var calendar = document.createElement("div");
+        calendar.className = "date-calendar";
+
+        var header = document.createElement("div");
+        header.className = "date-calendar-header";
+        var previous = document.createElement("button");
+        previous.type = "button";
+        previous.textContent = "‹";
+        var title = document.createElement("strong");
+        title.textContent = monthNames[month.getMonth()] + " " + month.getFullYear();
+        var next = document.createElement("button");
+        next.type = "button";
+        next.textContent = "›";
+        header.append(previous, title, next);
+        calendar.appendChild(header);
+
+        var grid = document.createElement("div");
+        grid.className = "date-calendar-grid";
+        dayNames.forEach(function (day) {
+            var label = document.createElement("span");
+            label.className = "date-calendar-day-label";
+            label.textContent = day;
+            grid.appendChild(label);
+        });
+
+        for (var blank = 0; blank < firstDay; blank++) {
+            grid.appendChild(document.createElement("span"));
+        }
+
+        for (var day = 1; day <= daysInMonth; day++) {
+            var date = new Date(month.getFullYear(), month.getMonth(), day);
+            var button = document.createElement("button");
+            button.type = "button";
+            button.textContent = String(day);
+            if (date < today) {
+                button.disabled = true;
+            }
+            if (selected && date.getTime() === selected.getTime()) {
+                button.classList.add("selected");
+            }
+            if (date.getTime() === today.getTime()) {
+                button.classList.add("today");
+            }
+            button.addEventListener("click", function (event) {
+                var picked = new Date(Number(event.currentTarget.dataset.year), Number(event.currentTarget.dataset.month), Number(event.currentTarget.dataset.day));
+                field.value = formatDisplayDate(picked);
+                enforceDatePair(depart, ret, field);
+                calendar.remove();
+            });
+            button.dataset.year = String(date.getFullYear());
+            button.dataset.month = String(date.getMonth());
+            button.dataset.day = String(date.getDate());
+            grid.appendChild(button);
+        }
+
+        previous.addEventListener("click", function () {
+            renderCalendar(field, depart, ret, new Date(month.getFullYear(), month.getMonth() - 1, 1));
+        });
+        next.addEventListener("click", function () {
+            renderCalendar(field, depart, ret, new Date(month.getFullYear(), month.getMonth() + 1, 1));
+        });
+
+        calendar.appendChild(grid);
+        wrapper.appendChild(calendar);
+    }
+
+    function showCalendar(field, depart, ret) {
+        document.querySelectorAll(".date-calendar").forEach(function (calendar) {
+            calendar.remove();
+        });
+        var selected = parseDisplayDate(field.value) || todayDate();
+        renderCalendar(field, depart, ret, selected);
+    }
+
     function bindDatePair(root) {
         var depart = root.querySelector("[data-flight-date='depart']");
         var ret = root.querySelector("[data-flight-date='return']");
@@ -57,43 +178,34 @@
             field.addEventListener("input", function () {
                 maskDateField(field);
             });
+            field.addEventListener("focus", function () {
+                showCalendar(field, depart, ret);
+            });
         });
 
         depart.addEventListener("change", function () {
-            var picked = parseDisplayDate(depart.value);
-            var currentReturn = parseDisplayDate(ret.value);
-            if (!picked) {
-                return;
-            }
-
-            if (picked < todayDate()) {
-                depart.value = "";
-                return;
-            }
-
-            depart.value = formatDisplayDate(picked);
-            if (currentReturn && picked > currentReturn) {
-                ret.value = formatDisplayDate(picked);
-                depart.value = "";
-            }
+            enforceDatePair(depart, ret, depart);
         });
 
         ret.addEventListener("change", function () {
-            var picked = parseDisplayDate(ret.value);
-            var currentDepart = parseDisplayDate(depart.value);
-            if (!picked) {
-                return;
-            }
+            enforceDatePair(depart, ret, ret);
+        });
 
-            if (picked < todayDate()) {
-                ret.value = "";
-                return;
-            }
+        root.querySelectorAll("[data-date-toggle]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                var target = root.querySelector("[data-flight-date='" + button.getAttribute("data-date-toggle") + "']");
+                if (target) {
+                    showCalendar(target, depart, ret);
+                    target.focus();
+                }
+            });
+        });
 
-            ret.value = formatDisplayDate(picked);
-            if (currentDepart && picked < currentDepart) {
-                depart.value = formatDisplayDate(picked);
-                ret.value = "";
+        document.addEventListener("click", function (event) {
+            if (!event.target.closest(".date-picker-field")) {
+                document.querySelectorAll(".date-calendar").forEach(function (calendar) {
+                    calendar.remove();
+                });
             }
         });
     }
