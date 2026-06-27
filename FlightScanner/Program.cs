@@ -40,6 +40,12 @@ builder.Services.AddScoped<SetupState>();
 builder.Services.AddScoped<IFlightSearchService, FlightSearchService>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 builder.Services.AddSingleton<StartupInitializer>();
+builder.Services.Configure<AlertScanOptions>(options =>
+{
+    options.IntervalMinutes = int.TryParse(builder.Configuration["ALERT_SCAN_INTERVAL_MINUTES"], out var minutes)
+        ? minutes
+        : 180;
+});
 builder.Services.AddHostedService<AlertScannerService>();
 
 builder.Services.AddAuthentication(options =>

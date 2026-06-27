@@ -1,6 +1,6 @@
 # Flight Scanner
 
-Self-hosted ASP.NET Core/Blazor PWA for searching demo/custom flight fares and creating price alerts.
+Self-hosted ASP.NET Core/Blazor PWA for searching SerpApi Google Flights fares and creating price alerts.
 
 ## What is included
 
@@ -10,7 +10,7 @@ Self-hosted ASP.NET Core/Blazor PWA for searching demo/custom flight fares and c
 - Price alerts with a background scanner.
 - Notification pipeline for browser push subscription records, SMTP email, and a configurable WhatsApp HTTP API.
 - Admin reminder settings for delivery channels, SMTP, WhatsApp, and Web Push VAPID keys.
-- Admin integration settings for SerpApi Google Flights or a custom flight provider API.
+- Admin integration settings for SerpApi Google Flights.
 - PWA manifest and service worker.
 - PostgreSQL storage configured from environment variables.
 
@@ -38,6 +38,12 @@ POSTGRES_SSL_MODE=Disable
 All deployment-sensitive values should be supplied through environment variables or Portainer secrets/env management. Do not commit `.env`.
 
 Email, WhatsApp, mobile notification settings, and the SerpApi key are configured in the app after setup from the admin pages.
+
+Price alerts are scanned every 3 hours by default. Override this with:
+
+```text
+ALERT_SCAN_INTERVAL_MINUTES=180
+```
 
 ## Run Locally
 
@@ -73,24 +79,9 @@ AllowedHosts=flight.veoxer.com;192.168.11.120;localhost
 
 ## Flight Data
 
-The app ships with SerpApi Google Flights support and a deterministic local estimate engine. Create a SerpApi account, then enter the API key under `Admin > Flight API`.
+The app ships with SerpApi Google Flights support. Create a SerpApi account, then enter the API key under `Admin > Flight API`.
 
-SerpApi free plans have a monthly search quota. Keep `Max route pairs per search` low for country or continent searches because each route pair can make a separate Google Flights request. SerpApi cached searches can be free when the exact query is served from their cache.
-
-You can also switch the provider to a custom free, self-hosted, or personally available HTTP provider from `Admin > Flight API`.
-
-The provider body template supports:
-
-- `{{origin}}`
-- `{{originType}}`
-- `{{destination}}`
-- `{{destinationType}}`
-- `{{departFrom}}`
-- `{{departTo}}`
-- `{{adults}}`
-- `{{children}}`
-- `{{infants}}`
-- `{{currency}}`
+SerpApi free plans have a monthly search quota. The app limits broad country or continent searches to one route pair per search to avoid burning through the free quota too quickly. SerpApi cached searches can be free when the exact query is served from their cache.
 
 ## Notes
 

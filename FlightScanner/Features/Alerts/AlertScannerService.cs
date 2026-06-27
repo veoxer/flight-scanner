@@ -1,18 +1,23 @@
 using FlightScanner.Data;
 using FlightScanner.Features.Flights;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace FlightScanner.Features.Alerts;
 
 public sealed class AlertScannerService(
     IServiceScopeFactory scopeFactory,
+    IOptions<AlertScanOptions> options,
     ILogger<AlertScannerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var interval = options.Value.Interval;
+        logger.LogInformation("Alert scanner interval is {IntervalMinutes} minutes.", interval.TotalMinutes);
+
         await ScanAsync(stoppingToken);
 
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(15));
+        using var timer = new PeriodicTimer(interval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             await ScanAsync(stoppingToken);
