@@ -1,10 +1,11 @@
 @page "/admin/reminders"
 @attribute [Authorize(Roles = "Admin")]
+@using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 
-<PageTitle>Reminder Settings</PageTitle>
+<PageTitle>@UiText.T("ReminderSettings")</PageTitle>
 
-<h1>Reminder settings</h1>
+<h1>@UiText.T("ReminderSettings")</h1>
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
@@ -13,29 +14,29 @@
 
 <EditForm Model="formModel" FormName="reminder-settings">
     <section class="tool-surface mb-3">
-        <h2>Delivery channels</h2>
-        <p class="settings-note">Choose which channels the alert scanner can use when a watched flight reaches its target price.</p>
+        <h2>@UiText.T("DeliveryChannels")</h2>
+        <p class="settings-note">@UiText.T("DeliveryChannelsText")</p>
 
         <div class="channel-grid">
             <label class="channel-toggle">
                 <InputCheckbox class="form-check-input" @bind-Value="emailEnabled" />
                 <span>
                     <strong>Email</strong>
-                    <small>Send through your SMTP account.</small>
+                    <small>@UiText.T("SendSmtp")</small>
                 </span>
             </label>
             <label class="channel-toggle">
                 <InputCheckbox class="form-check-input" @bind-Value="whatsAppEnabled" />
                 <span>
                     <strong>WhatsApp</strong>
-                    <small>Send through your WhatsApp HTTP API.</small>
+                    <small>@UiText.T("SendWhatsapp")</small>
                 </span>
             </label>
             <label class="channel-toggle">
                 <InputCheckbox class="form-check-input" @bind-Value="webPushEnabled" />
                 <span>
-                    <strong>Mobile notification</strong>
-                    <small>Use browser push settings for installed PWA clients.</small>
+                    <strong>@UiText.T("MobileNotification")</strong>
+                    <small>@UiText.T("UseBrowserPush")</small>
                 </span>
             </label>
         </div>
@@ -44,46 +45,46 @@
     <div class="settings-grid">
         <section class="tool-surface">
             <h2>Email SMTP</h2>
-            <label class="form-label">SMTP host</label>
+            <label class="form-label">@UiText.T("SmtpHost")</label>
             <InputText class="form-control" @bind-Value="email.SmtpHost" />
-            <label class="form-label mt-3">SMTP port</label>
+            <label class="form-label mt-3">@UiText.T("SmtpPort")</label>
             <InputNumber class="form-control" @bind-Value="email.SmtpPort" />
-            <label class="form-label mt-3">From address</label>
+            <label class="form-label mt-3">@UiText.T("FromAddress")</label>
             <InputText class="form-control" @bind-Value="email.FromAddress" />
-            <label class="form-label mt-3">Username</label>
+            <label class="form-label mt-3">@UiText.T("Username")</label>
             <InputText class="form-control" @bind-Value="email.UserName" />
-            <label class="form-label mt-3">Password or app password</label>
+            <label class="form-label mt-3">@UiText.T("PasswordOrAppPassword")</label>
             <InputText class="form-control" type="password" @bind-Value="email.Password" />
             <div class="form-check mt-3">
                 <InputCheckbox class="form-check-input" @bind-Value="email.UseStartTls" />
-                <label class="form-check-label">Use TLS</label>
+                <label class="form-check-label">@UiText.T("UseTls")</label>
             </div>
         </section>
 
         <section class="tool-surface">
             <h2>WhatsApp API</h2>
-            <label class="form-label">Endpoint URL</label>
+            <label class="form-label">@UiText.T("EndpointUrl")</label>
             <InputText class="form-control" @bind-Value="whatsApp.EndpointUrl" />
-            <label class="form-label mt-3">HTTP method</label>
+            <label class="form-label mt-3">@UiText.T("HttpMethod")</label>
             <InputText class="form-control" @bind-Value="whatsApp.HttpMethod" />
-            <label class="form-label mt-3">Headers JSON</label>
+            <label class="form-label mt-3">@UiText.T("HeadersJson")</label>
             <InputTextArea class="form-control code-box" @bind-Value="whatsApp.HeadersJson" />
-            <label class="form-label mt-3">Body template</label>
+            <label class="form-label mt-3">@UiText.T("BodyTemplate")</label>
             <InputTextArea class="form-control code-box" @bind-Value="whatsApp.BodyTemplate" />
         </section>
 
         <section class="tool-surface">
-            <h2>Mobile notification</h2>
-            <label class="form-label">VAPID public key</label>
+            <h2>@UiText.T("MobileNotification")</h2>
+            <label class="form-label">@UiText.T("VapidPublicKey")</label>
             <InputTextArea class="form-control code-box" @bind-Value="webPush.PublicKey" />
-            <label class="form-label mt-3">VAPID private key</label>
+            <label class="form-label mt-3">@UiText.T("VapidPrivateKey")</label>
             <InputTextArea class="form-control code-box" @bind-Value="webPush.PrivateKey" />
-            <label class="form-label mt-3">Subject</label>
+            <label class="form-label mt-3">@UiText.T("Subject")</label>
             <InputText class="form-control" @bind-Value="webPush.Subject" />
         </section>
     </div>
 
-    <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">Save reminder settings</button>
+    <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">@UiText.T("SaveReminderSettings")</button>
 </EditForm>
 
 @code {
@@ -113,7 +114,7 @@
         await SaveSettingAsync(db, IntegrationKind.WhatsApp, whatsAppEnabled, whatsApp);
         await SaveSettingAsync(db, IntegrationKind.WebPush, webPushEnabled, webPush);
         await db.SaveChangesAsync();
-        message = "Reminder settings saved.";
+        message = UiText.T("ReminderSettingsSaved");
     }
 
     private (T Options, bool Enabled) Read<T>(List<IntegrationSetting> settings, IntegrationKind kind) where T : new()

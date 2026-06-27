@@ -1,14 +1,15 @@
 @page "/alerts"
 @attribute [Authorize]
+@using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime Js
 
-<PageTitle>Alerts</PageTitle>
+<PageTitle>@UiText.T("Alerts")</PageTitle>
 
 <div class="page-title-row">
-    <h1>Price alerts</h1>
-    <button class="btn btn-outline-primary" @onclick="EnableNotificationsAsync">Enable notifications</button>
+    <h1>@UiText.T("PriceAlerts")</h1>
+    <button class="btn btn-outline-primary" @onclick="EnableNotificationsAsync">@UiText.T("EnableNotifications")</button>
 </div>
 
 @if (!string.IsNullOrWhiteSpace(message))
@@ -19,9 +20,9 @@
 @if (alerts.Count == 0)
 {
     <div class="empty-state">
-        <h2>No alerts yet</h2>
-        <p>Create one from the search page and the background scanner will keep checking it.</p>
-        <a class="btn btn-primary" href="search">Create alert</a>
+        <h2>@UiText.T("NoAlertsYet")</h2>
+        <p>@UiText.T("NoAlertsText")</p>
+        <a class="btn btn-primary" href="search">@UiText.T("CreateAlert")</a>
     </div>
 }
 else
@@ -31,31 +32,31 @@ else
         {
             <article class="alert-row">
                 <div>
-                    <strong>@alert.Origin to @alert.Destination</strong>
-                    <span>@alert.DepartFrom.ToString("yyyy-MM-dd") to @alert.DepartTo.ToString("yyyy-MM-dd") - @alert.Adults adult(s) - @alert.Cabin</span>
+                    <strong>@alert.Origin @UiText.T("ToLower") @alert.Destination</strong>
+                    <span>@alert.DepartFrom.ToString("yyyy-MM-dd") @UiText.T("ToLower") @alert.DepartTo.ToString("yyyy-MM-dd") - @alert.Adults @UiText.T("Adults") - @alert.Cabin</span>
                 </div>
                 <div>
                     <strong>@alert.TargetPrice.ToString("0.##") @alert.Currency</strong>
-                    <span>Last seen: @(alert.LastObservedPrice?.ToString("0.##") ?? "not checked")</span>
+                    <span>@UiText.T("LastSeen"): @(alert.LastObservedPrice?.ToString("0.##") ?? UiText.T("NotChecked"))</span>
                 </div>
                 <div class="row-actions">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAsync(alert.Id)">@(alert.IsActive ? "Pause" : "Resume")</button>
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(alert.Id)">Delete</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAsync(alert.Id)">@(alert.IsActive ? UiText.T("Pause") : UiText.T("Resume"))</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(alert.Id)">@UiText.T("Delete")</button>
                 </div>
             </article>
         }
     </div>
 }
 
-<h2 class="mt-4">Recent notifications</h2>
+<h2 class="mt-4">@UiText.T("RecentNotifications")</h2>
 <div class="table-responsive">
     <table class="table align-middle">
         <thead>
             <tr>
-                <th>When</th>
-                <th>Channel</th>
-                <th>Status</th>
-                <th>Message</th>
+                <th>@UiText.T("When")</th>
+                <th>@UiText.T("Channel")</th>
+                <th>@UiText.T("Status")</th>
+                <th>@UiText.T("Message")</th>
             </tr>
         </thead>
         <tbody>
@@ -64,7 +65,7 @@ else
                 <tr>
                     <td>@attempt.CreatedAt.LocalDateTime.ToString("g")</td>
                     <td>@attempt.Channel</td>
-                    <td>@(attempt.Succeeded ? "Sent" : "Failed")</td>
+                    <td>@(attempt.Succeeded ? UiText.T("Sent") : UiText.T("Failed"))</td>
                     <td>@attempt.Subject</td>
                 </tr>
             }
@@ -128,10 +129,10 @@ else
         var subscription = await Js.InvokeAsync<string>("flightNotifications.subscribePush");
         message = subscription switch
         {
-            "subscribed" => "Push notifications are enabled for this device.",
-            "missing-public-key" => "Browser notifications are allowed. Add VAPID keys in integrations to enable background mobile push.",
-            "unsupported" => "This browser does not support push notifications.",
-            _ => $"Notification permission: {permission}."
+            "subscribed" => UiText.T("PushEnabled"),
+            "missing-public-key" => UiText.T("PushMissingKey"),
+            "unsupported" => UiText.T("PushUnsupported"),
+            _ => string.Format(System.Globalization.CultureInfo.CurrentCulture, UiText.T("NotificationPermission"), permission)
         };
     }
 }

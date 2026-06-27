@@ -1,5 +1,6 @@
 @page "/"
 @attribute [AllowAnonymous]
+@using FlightScanner.Features.Localization
 @inject SetupState SetupState
 @inject NavigationManager Navigation
 
@@ -7,17 +8,17 @@
 
 <section class="hero-band">
     <div>
-        <p class="eyebrow">Self-hosted fare watching</p>
+        <p class="eyebrow">@UiText.T("HomeEyebrow")</p>
         <h1>Flight Scanner</h1>
-        <p class="lead">Search airports, countries, and continents, then let the app watch price targets in the background.</p>
+        <p class="lead">@UiText.T("HomeLead")</p>
         <AuthorizeView>
             <Authorized>
-                <a class="btn btn-primary btn-lg" href="search">Search flights</a>
-                <a class="btn btn-outline-secondary btn-lg ms-2" href="alerts">View alerts</a>
+                <a class="btn btn-primary btn-lg" href="search">@UiText.T("SearchFlights")</a>
+                <a class="btn btn-outline-secondary btn-lg ms-2" href="alerts">@UiText.T("ViewAlerts")</a>
             </Authorized>
             <NotAuthorized>
-                <a class="btn btn-primary btn-lg" href="Account/Login">Login</a>
-                <a class="btn btn-outline-secondary btn-lg ms-2" href="Account/Register">Register</a>
+                <a class="btn btn-primary btn-lg" href="Account/Login">@UiText.T("Login")</a>
+                <a class="btn btn-outline-secondary btn-lg ms-2" href="Account/Register">@UiText.T("Register")</a>
             </NotAuthorized>
         </AuthorizeView>
     </div>
@@ -25,16 +26,16 @@
 
 <section class="metrics-grid">
     <div>
-        <strong>Location scope</strong>
-        <span>Airport, city, country, or continent</span>
+        <strong>@UiText.T("LocationScope")</strong>
+        <span>@UiText.T("LocationScopeText")</span>
     </div>
     <div>
-        <strong>Alerts</strong>
-        <span>Push-ready, SMTP email, and configurable WhatsApp API</span>
+        <strong>@UiText.T("Alerts")</strong>
+        <span>@UiText.T("AlertsMetricText")</span>
     </div>
     <div>
-        <strong>Data source</strong>
-        <span>Amadeus Flight Offers, custom API, or local estimates</span>
+        <strong>@UiText.T("DataSource")</strong>
+        <span>@UiText.T("DataSourceText")</span>
     </div>
 </section>
 

@@ -1,8 +1,9 @@
-﻿@page "/Account/AccessDenied"
+@page "/Account/AccessDenied"
+@using FlightScanner.Features.Localization
 
-<PageTitle>Access denied</PageTitle>
+<PageTitle>@UiText.T("AccessDenied")</PageTitle>
 
 <header>
-    <h1 class="text-danger">Access denied</h1>
-    <p class="text-danger">You do not have access to this resource.</p>
+    <h1 class="text-danger">@UiText.T("AccessDenied")</h1>
+    <p class="text-danger">@UiText.T("AccessDeniedText")</p>
 </header>

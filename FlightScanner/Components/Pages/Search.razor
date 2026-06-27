@@ -228,7 +228,7 @@
     public int Children { get; set; }
 
     [Parameter, SupplyParameterFromQuery(Name = "cabin")]
-    public CabinClass Cabin { get; set; }
+    public string CabinQuery { get; set; } = nameof(CabinClass.Economy);
 
     [Parameter, SupplyParameterFromQuery(Name = "directOnly")]
     public bool DirectOnly { get; set; }
@@ -279,6 +279,7 @@
     private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
     private List<FlightLocation> locations = [];
     private string? message;
+    private CabinClass Cabin => Enum.TryParse<CabinClass>(CabinQuery, ignoreCase: true, out var cabin) ? cabin : CabinClass.Economy;
     private string TravellerSummary => $"{Adults + Children} {(Adults + Children == 1 ? T("Traveller") : T("Travellers"))}, {CabinLabel(Cabin)}";
 
     protected override async Task OnParametersSetAsync()

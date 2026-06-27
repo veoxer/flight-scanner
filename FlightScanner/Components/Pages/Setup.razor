@@ -1,24 +1,25 @@
 @page "/setup"
 @attribute [AllowAnonymous]
 @using System.ComponentModel.DataAnnotations
+@using FlightScanner.Features.Localization
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject SetupState SetupState
 @inject NavigationManager Navigation
 
-<PageTitle>Setup</PageTitle>
+<PageTitle>@UiText.T("Setup")</PageTitle>
 
 <div class="setup-shell">
     <div>
-        <p class="eyebrow">First opening</p>
-        <h1>Create the admin user</h1>
-        <p class="lead">This account can configure integrations, manage users, and control alerts across the app.</p>
+        <p class="eyebrow">@UiText.T("FirstOpening")</p>
+        <h1>@UiText.T("CreateAdminUser")</h1>
+        <p class="lead">@UiText.T("SetupLead")</p>
     </div>
 
     @if (isComplete)
     {
-        <div class="alert alert-info">Setup is already complete.</div>
-        <a class="btn btn-primary" href="/">Go to dashboard</a>
+        <div class="alert alert-info">@UiText.T("SetupComplete")</div>
+        <a class="btn btn-primary" href="/">@UiText.T("GoToDashboard")</a>
     }
     else
     {
@@ -26,19 +27,19 @@
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" />
 
-            <label class="form-label">Display name</label>
+            <label class="form-label">@UiText.T("DisplayName")</label>
             <InputText class="form-control" @bind-Value="Input.DisplayName" />
             <ValidationMessage For="() => Input.DisplayName" class="text-danger" />
 
-            <label class="form-label mt-3">Email</label>
+            <label class="form-label mt-3">@UiText.T("Email")</label>
             <InputText class="form-control" type="email" @bind-Value="Input.Email" />
             <ValidationMessage For="() => Input.Email" class="text-danger" />
 
-            <label class="form-label mt-3">Password</label>
+            <label class="form-label mt-3">@UiText.T("Password")</label>
             <InputText class="form-control" type="password" @bind-Value="Input.Password" />
             <ValidationMessage For="() => Input.Password" class="text-danger" />
 
-            <button class="btn btn-primary mt-4" type="submit" disabled="@busy">Create admin</button>
+            <button class="btn btn-primary mt-4" type="submit" disabled="@busy">@UiText.T("CreateAdmin")</button>
         </EditForm>
     }
 

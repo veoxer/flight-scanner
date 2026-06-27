@@ -1,10 +1,11 @@
 @page "/admin/integrations"
 @attribute [Authorize(Roles = "Admin")]
+@using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 
-<PageTitle>Integrations</PageTitle>
+<PageTitle>@UiText.T("FlightIntegrations")</PageTitle>
 
-<h1>Flight integrations</h1>
+<h1>@UiText.T("FlightIntegrations")</h1>
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
@@ -13,10 +14,10 @@
 
 <EditForm Model="formModel" FormName="flight-provider-settings">
     <section class="tool-surface">
-        <h2>Flight provider API</h2>
-        <p class="settings-note">Use Amadeus Self-Service for real flight-offer data, or switch to a custom HTTP provider. The local estimate engine remains available when this is disabled.</p>
+        <h2>@UiText.T("FlightProviderApi")</h2>
+        <p class="settings-note">@UiText.T("FlightProviderText")</p>
 
-        <label class="form-label">Provider</label>
+        <label class="form-label">@UiText.T("Provider")</label>
         <InputSelect class="form-select" @bind-Value="flight.ProviderType">
             <option value="Amadeus">Amadeus Flight Offers</option>
             <option value="Custom">Custom HTTP API</option>
@@ -24,41 +25,41 @@
 
         @if (flight.ProviderType.Equals("Amadeus", StringComparison.OrdinalIgnoreCase))
         {
-            <label class="form-label mt-3">Environment</label>
+            <label class="form-label mt-3">@UiText.T("Environment")</label>
             <InputSelect class="form-select" @bind-Value="flight.AmadeusEnvironment">
-                <option value="Test">Test - free cached data</option>
-                <option value="Production">Production - real-time data</option>
+                <option value="Test">@UiText.T("TestCachedData")</option>
+                <option value="Production">@UiText.T("ProductionRealtimeData")</option>
             </InputSelect>
-            <label class="form-label mt-3">API Key</label>
+            <label class="form-label mt-3">@UiText.T("ApiKey")</label>
             <InputText class="form-control" @bind-Value="flight.AmadeusClientId" />
-            <label class="form-label mt-3">API Secret</label>
+            <label class="form-label mt-3">@UiText.T("ApiSecret")</label>
             <InputText class="form-control" type="password" @bind-Value="flight.AmadeusClientSecret" />
-            <label class="form-label mt-3">Max offers</label>
+            <label class="form-label mt-3">@UiText.T("MaxOffers")</label>
             <InputNumber class="form-control" @bind-Value="flight.AmadeusMaxOffers" />
         }
         else
         {
-        <label class="form-label">Endpoint URL</label>
+        <label class="form-label">@UiText.T("EndpointUrl")</label>
         <InputText class="form-control" @bind-Value="flight.EndpointUrl" />
-        <label class="form-label mt-3">HTTP method</label>
+        <label class="form-label mt-3">@UiText.T("HttpMethod")</label>
         <InputText class="form-control" @bind-Value="flight.HttpMethod" />
-        <label class="form-label mt-3">Headers JSON</label>
+        <label class="form-label mt-3">@UiText.T("HeadersJson")</label>
         <InputTextArea class="form-control code-box" @bind-Value="flight.HeadersJson" />
-        <label class="form-label mt-3">Body template</label>
+        <label class="form-label mt-3">@UiText.T("BodyTemplate")</label>
         <InputTextArea class="form-control code-box" @bind-Value="flight.BodyTemplate" />
-        <label class="form-label mt-3">Price JSON path</label>
+        <label class="form-label mt-3">@UiText.T("PriceJsonPath")</label>
         <InputText class="form-control" @bind-Value="flight.PriceJsonPath" />
-        <label class="form-label mt-3">Currency JSON path</label>
+        <label class="form-label mt-3">@UiText.T("CurrencyJsonPath")</label>
         <InputText class="form-control" @bind-Value="flight.CurrencyJsonPath" />
-        <label class="form-label mt-3">Booking URL JSON path</label>
+        <label class="form-label mt-3">@UiText.T("BookingUrlJsonPath")</label>
         <InputText class="form-control" @bind-Value="flight.UrlJsonPath" />
         }
 
         <div class="form-check mt-3">
             <InputCheckbox class="form-check-input" @bind-Value="flightEnabled" />
-            <label class="form-check-label">Enabled</label>
+            <label class="form-check-label">@UiText.T("Enabled")</label>
         </div>
-        <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">Save</button>
+        <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">@UiText.T("Save")</button>
     </section>
 </EditForm>
 
@@ -86,6 +87,6 @@
         setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(flight, jsonOptions);
         setting.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
-        message = "Flight provider settings saved.";
+        message = UiText.T("FlightProviderSaved");
     }
 }

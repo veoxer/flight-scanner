@@ -1,10 +1,11 @@
 @page "/admin/users"
 @attribute [Authorize(Roles = "Admin")]
+@using FlightScanner.Features.Localization
 @inject UserManager<ApplicationUser> UserManager
 
-<PageTitle>Users</PageTitle>
+<PageTitle>@UiText.T("Users")</PageTitle>
 
-<h1>Users</h1>
+<h1>@UiText.T("Users")</h1>
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
@@ -12,36 +13,36 @@
 }
 
 <EditForm Model="newUser" FormName="admin-create-user" class="tool-surface mb-4">
-    <h2>Add user</h2>
+    <h2>@UiText.T("AddUser")</h2>
     <div class="search-grid">
         <div>
-            <label class="form-label">Display name</label>
+            <label class="form-label">@UiText.T("DisplayName")</label>
             <InputText class="form-control" @bind-Value="newUser.DisplayName" />
         </div>
         <div>
-            <label class="form-label">Email</label>
+            <label class="form-label">@UiText.T("Email")</label>
             <InputText class="form-control" type="email" @bind-Value="newUser.Email" />
         </div>
         <div>
-            <label class="form-label">Temporary password</label>
+            <label class="form-label">@UiText.T("TemporaryPassword")</label>
             <InputText class="form-control" type="password" @bind-Value="newUser.Password" />
         </div>
         <div class="form-check align-self-end">
             <InputCheckbox class="form-check-input" @bind-Value="newUser.Admin" />
-            <label class="form-check-label">Admin</label>
+            <label class="form-check-label">@UiText.T("Admin")</label>
         </div>
     </div>
-    <button type="button" class="btn btn-primary mt-3" @onclick="CreateUserAsync">Create user</button>
+    <button type="button" class="btn btn-primary mt-3" @onclick="CreateUserAsync">@UiText.T("CreateUser")</button>
 </EditForm>
 
 <div class="table-responsive">
     <table class="table align-middle">
         <thead>
             <tr>
-                <th>User</th>
-                <th>Email</th>
-                <th>Roles</th>
-                <th>Status</th>
+                <th>@UiText.T("User")</th>
+                <th>@UiText.T("Email")</th>
+                <th>@UiText.T("Roles")</th>
+                <th>@UiText.T("Status")</th>
                 <th></th>
             </tr>
         </thead>
@@ -52,10 +53,10 @@
                     <td>@(row.User.DisplayName ?? row.User.UserName)</td>
                     <td>@row.User.Email</td>
                     <td>@string.Join(", ", row.Roles)</td>
-                    <td>@(row.User.LockoutEnd > DateTimeOffset.UtcNow ? "Locked" : "Active")</td>
+                    <td>@(row.User.LockoutEnd > DateTimeOffset.UtcNow ? UiText.T("Locked") : UiText.T("Active"))</td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAdminAsync(row.User)">@(row.Roles.Contains("Admin") ? "Remove admin" : "Make admin")</button>
-                        <button class="btn btn-sm btn-outline-warning ms-2" @onclick="() => ToggleLockAsync(row.User)">@(row.User.LockoutEnd > DateTimeOffset.UtcNow ? "Unlock" : "Lock")</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAdminAsync(row.User)">@(row.Roles.Contains("Admin") ? UiText.T("RemoveAdmin") : UiText.T("MakeAdmin"))</button>
+                        <button class="btn btn-sm btn-outline-warning ms-2" @onclick="() => ToggleLockAsync(row.User)">@(row.User.LockoutEnd > DateTimeOffset.UtcNow ? UiText.T("Unlock") : UiText.T("Lock"))</button>
                     </td>
                 </tr>
             }
@@ -110,7 +111,7 @@
         newUser.Email = "";
         newUser.Password = "";
         newUser.Admin = false;
-        message = "User created.";
+        message = UiText.T("UserCreated");
         await LoadAsync();
     }
 
