@@ -1,94 +1,121 @@
 @page "/search"
 @attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
 @inject IFlightSearchService FlightSearch
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Search</PageTitle>
 
-<h1>Search flights</h1>
-
-<EditForm Model="model" FormName="search-form">
-    <div class="tool-surface">
-        <div class="search-grid">
-        <div>
-            <label class="form-label">From scope</label>
-            <InputSelect class="form-select" @bind-Value="model.OriginType">
-                @foreach (var type in Enum.GetValues<LocationType>())
-                {
-                    <option value="@type">@type</option>
-                }
-            </InputSelect>
-        </div>
-        <div>
-            <label class="form-label">From</label>
-            <InputText class="form-control" list="origin-locations" @bind-Value="model.Origin" placeholder="JFK, Casablanca, Morocco, Europe" />
-        </div>
-        <div>
-            <label class="form-label">To scope</label>
-            <InputSelect class="form-select" @bind-Value="model.DestinationType">
-                @foreach (var type in Enum.GetValues<LocationType>())
-                {
-                    <option value="@type">@type</option>
-                }
-            </InputSelect>
-        </div>
-        <div>
-            <label class="form-label">To</label>
-            <InputText class="form-control" list="destination-locations" @bind-Value="model.Destination" placeholder="CMN, Paris, Japan, Asia" />
-        </div>
-        <div>
-            <label class="form-label">Depart date</label>
-            <InputDate class="form-control" @bind-Value="model.DepartDate" />
-        </div>
-        <div>
-            <label class="form-label">Return date</label>
-            <InputDate class="form-control" @bind-Value="model.ReturnDate" />
-        </div>
-        <div>
-            <label class="form-label">Adults</label>
-            <InputNumber class="form-control" @bind-Value="model.Adults" />
-        </div>
-        <div>
-            <label class="form-label">Children</label>
-            <InputNumber class="form-control" @bind-Value="model.Children" />
-        </div>
-        <div>
-            <label class="form-label">Infants</label>
-            <InputNumber class="form-control" @bind-Value="model.Infants" />
-        </div>
-        <div>
-            <label class="form-label">Cabin</label>
-            <InputSelect class="form-select" @bind-Value="model.Cabin">
-                @foreach (var cabin in Enum.GetValues<CabinClass>())
-                {
-                    <option value="@cabin">@cabin</option>
-                }
-            </InputSelect>
-        </div>
-        <div>
-            <label class="form-label">Max stops</label>
-            <InputNumber class="form-control" @bind-Value="model.MaxStops" />
-        </div>
-        <div>
-            <label class="form-label">Checked bags</label>
-            <InputNumber class="form-control" @bind-Value="model.CheckedBags" />
-        </div>
-        <div>
-            <label class="form-label">Currency</label>
-            <InputText class="form-control" maxlength="3" @bind-Value="model.Currency" />
-        </div>
-        <div class="form-check align-self-end">
-            <InputCheckbox class="form-check-input" @bind-Value="model.DirectOnly" />
-            <label class="form-check-label">Direct flights only</label>
+<section class="search-command">
+    <div>
+        <p class="eyebrow">Flight deck</p>
+        <h1>Search flights</h1>
+        <div class="route-preview" aria-label="Current route">
+            <span>@Model.Origin</span>
+            <span class="route-arrow">-></span>
+            <span>@Model.Destination</span>
         </div>
     </div>
+    <div class="search-status-panel">
+        <span>@Model.DepartDate?.ToString("MMM d, yyyy")</span>
+        <strong>@CurrencySymbol(Model.Currency) @Model.Currency.ToUpperInvariant()</strong>
+    </div>
+</section>
 
-        <div class="actions-row">
-            <button type="button" class="btn btn-primary" @onclick="RunSearchAsync" disabled="@busy">Search</button>
+<EditForm Model="Model" FormName="search-form" method="post" OnValidSubmit="RunSearchAsync">
+    <DataAnnotationsValidator />
+    <div class="tool-surface search-surface">
+        <div class="search-grid">
+            <div>
+                <label class="form-label">From scope</label>
+                <InputSelect class="form-select" @bind-Value="Model.OriginType">
+                    @foreach (var type in Enum.GetValues<LocationType>())
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </InputSelect>
+            </div>
+            <div>
+                <label class="form-label">From</label>
+                <InputText class="form-control" list="origin-locations" @bind-Value="Model.Origin" placeholder="JFK, Casablanca, Morocco, Europe" />
+                <ValidationMessage For="() => Model.Origin" />
+            </div>
+            <div>
+                <label class="form-label">To scope</label>
+                <InputSelect class="form-select" @bind-Value="Model.DestinationType">
+                    @foreach (var type in Enum.GetValues<LocationType>())
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </InputSelect>
+            </div>
+            <div>
+                <label class="form-label">To</label>
+                <InputText class="form-control" list="destination-locations" @bind-Value="Model.Destination" placeholder="CMN, Paris, Japan, Asia" />
+                <ValidationMessage For="() => Model.Destination" />
+            </div>
+            <div>
+                <label class="form-label">Depart date</label>
+                <InputDate id="depart-date" class="form-control" data-flight-date="depart" min="@TodayIso" @bind-Value="Model.DepartDate" />
+                <ValidationMessage For="() => Model.DepartDate" />
+            </div>
+            <div>
+                <label class="form-label">Return date</label>
+                <InputDate id="return-date" class="form-control" data-flight-date="return" min="@TodayIso" @bind-Value="Model.ReturnDate" />
+                <ValidationMessage For="() => Model.ReturnDate" />
+            </div>
+            <div>
+                <label class="form-label">Adults</label>
+                <InputNumber class="form-control" @bind-Value="Model.Adults" />
+            </div>
+            <div>
+                <label class="form-label">Children</label>
+                <InputNumber class="form-control" @bind-Value="Model.Children" />
+            </div>
+            <div>
+                <label class="form-label">Infants</label>
+                <InputNumber class="form-control" @bind-Value="Model.Infants" />
+            </div>
+            <div>
+                <label class="form-label">Cabin</label>
+                <InputSelect class="form-select" @bind-Value="Model.Cabin">
+                    @foreach (var cabin in Enum.GetValues<CabinClass>())
+                    {
+                        <option value="@cabin">@cabin</option>
+                    }
+                </InputSelect>
+            </div>
+            <div>
+                <label class="form-label">Max stops</label>
+                <InputNumber class="form-control" @bind-Value="Model.MaxStops" />
+            </div>
+            <div>
+                <label class="form-label">Checked bags</label>
+                <InputNumber class="form-control" @bind-Value="Model.CheckedBags" />
+            </div>
+            <div>
+                <label class="form-label">Currency</label>
+                <div class="currency-control">
+                    <span class="currency-glyph" aria-hidden="true">@CurrencySymbol(Model.Currency)</span>
+                    <InputText class="form-control currency-input" list="currency-options" maxlength="3" @bind-Value="Model.Currency" />
+                </div>
+                <ValidationMessage For="() => Model.Currency" />
+            </div>
+            <div class="direct-toggle">
+                <InputCheckbox id="direct-only" class="form-check-input" @bind-Value="Model.DirectOnly" />
+                <label class="form-check-label" for="direct-only">Direct flights only</label>
+            </div>
+        </div>
+
+        <div class="actions-row search-actions">
+            <button type="submit" class="btn btn-primary btn-search" disabled="@busy">
+                <span aria-hidden="true">⌕</span>
+                <span>@(busy ? "Searching..." : "Search")</span>
+            </button>
             <div class="target-price">
                 <label class="form-label">Alert target</label>
-                <InputNumber class="form-control" @bind-Value="model.TargetPrice" />
+                <InputNumber class="form-control" @bind-Value="Model.TargetPrice" />
             </div>
             <button type="button" class="btn btn-outline-primary" @onclick="SaveAlertAsync" disabled="@busy">Save alert</button>
         </div>
@@ -96,16 +123,23 @@
 </EditForm>
 
 <datalist id="origin-locations">
-    @foreach (var location in LocationOptions(model.OriginType))
+    @foreach (var location in LocationOptions(Model.OriginType))
     {
         <option value="@LocationValue(location)" label="@LocationLabel(location)"></option>
     }
 </datalist>
 
 <datalist id="destination-locations">
-    @foreach (var location in LocationOptions(model.DestinationType))
+    @foreach (var location in LocationOptions(Model.DestinationType))
     {
         <option value="@LocationValue(location)" label="@LocationLabel(location)"></option>
+    }
+</datalist>
+
+<datalist id="currency-options">
+    @foreach (var currency in Currencies)
+    {
+        <option value="@currency.Code" label="@($"{currency.Symbol} {currency.Name}")"></option>
     }
 </datalist>
 
@@ -118,8 +152,8 @@
 {
     <div class="section-heading">
         <div>
-            <h2>Fare estimates</h2>
-            <p>These are local estimates unless a real flight provider API is enabled.</p>
+            <h2>Fare results</h2>
+            <p>@offers.Count offer@(offers.Count == 1 ? "" : "s") found for @Model.Origin to @Model.Destination.</p>
         </div>
     </div>
     <div class="results-grid">
@@ -131,8 +165,8 @@
                     <span>@offer.Provider</span>
                 </div>
                 <div>
-                    <strong>@offer.Price.ToString("0.##") @offer.Currency</strong>
-                    <span>@offer.Stops @(offer.Stops == 1 ? "stop" : "stops") - @offer.Duration.Hours h @offer.Duration.Minutes m</span>
+                    <strong>@CurrencySymbol(offer.Currency) @offer.Price.ToString("0.##") @offer.Currency</strong>
+                    <span>@offer.Stops @(offer.Stops == 1 ? "stop" : "stops") · @FormatDuration(offer.Duration)</span>
                 </div>
                 <div>
                     <strong>@offer.DepartDate.ToString("yyyy-MM-dd")</strong>
@@ -141,7 +175,7 @@
                 <div class="row-actions">
                     @if (!string.IsNullOrWhiteSpace(offer.BookingUrl) && offer.BookingUrl != "#")
                     {
-                        <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank">Open</a>
+                        <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank" rel="noopener">Open</a>
                     }
                 </div>
             </article>
@@ -154,7 +188,7 @@
     <div class="section-heading">
         <div>
             <h2>Airline direct search</h2>
-            <p>Open regular and low-cost airline booking pages for this route.</p>
+            <p>Regular and low-cost airline booking pages for this route.</p>
         </div>
     </div>
     <div class="airline-grid">
@@ -166,22 +200,53 @@
                     <span>@link.Region</span>
                 </div>
                 <span class="carrier-pill">@link.Category</span>
-                <a class="btn btn-sm btn-primary" href="@link.SearchUrl" target="_blank">Search airline</a>
+                <a class="btn btn-sm btn-primary" href="@link.SearchUrl" target="_blank" rel="noopener">Search airline</a>
             </article>
         }
     </div>
 }
 
 @code {
-    private readonly SearchInput model = new();
+    [SupplyParameterFromForm]
+    private SearchInput? Input { get; set; }
+
+    private SearchInput Model => Input ??= new SearchInput();
+
+    private static readonly IReadOnlyList<CurrencyOption> Currencies =
+    [
+        new("USD", "$", "US Dollar"),
+        new("EUR", "€", "Euro"),
+        new("GBP", "£", "British Pound"),
+        new("MAD", "د.م.", "Moroccan Dirham"),
+        new("CAD", "C$", "Canadian Dollar"),
+        new("AUD", "A$", "Australian Dollar"),
+        new("JPY", "¥", "Japanese Yen"),
+        new("CNY", "¥", "Chinese Yuan"),
+        new("AED", "د.إ", "UAE Dirham"),
+        new("SAR", "﷼", "Saudi Riyal"),
+        new("CHF", "CHF", "Swiss Franc"),
+        new("SEK", "kr", "Swedish Krona"),
+        new("NOK", "kr", "Norwegian Krone"),
+        new("DKK", "kr", "Danish Krone"),
+        new("BRL", "R$", "Brazilian Real"),
+        new("MXN", "$", "Mexican Peso"),
+        new("ZAR", "R", "South African Rand"),
+        new("INR", "₹", "Indian Rupee"),
+        new("SGD", "S$", "Singapore Dollar"),
+        new("NZD", "NZ$", "New Zealand Dollar")
+    ];
+
     private IReadOnlyList<FlightOffer> offers = [];
     private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
     private List<FlightLocation> locations = [];
     private bool busy;
     private string? message;
+    private static string TodayIso => DateTime.Today.ToString("yyyy-MM-dd");
 
     protected override async Task OnInitializedAsync()
     {
+        _ = Model;
+
         await using var db = await DbFactory.CreateDbContextAsync();
         locations = await db.FlightLocations.AsNoTracking()
             .OrderBy(location => location.Type)
@@ -191,9 +256,16 @@
 
     private async Task RunSearchAsync()
     {
+        if (!Model.ValidateDateRange(out message))
+        {
+            offers = [];
+            airlineLinks = [];
+            return;
+        }
+
         busy = true;
         message = "Searching fares and preparing airline links...";
-        var query = model.ToQuery();
+        var query = Model.ToQuery();
         offers = await FlightSearch.SearchAsync(query);
         airlineLinks = FlightSearch.GetAirlineSearchLinks(query);
         message = offers.Count == 0
@@ -204,6 +276,11 @@
 
     private async Task SaveAlertAsync()
     {
+        if (!Model.ValidateDateRange(out message))
+        {
+            return;
+        }
+
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(userId))
@@ -213,46 +290,109 @@
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        db.PriceAlerts.Add(model.ToAlert(userId));
+        db.PriceAlerts.Add(Model.ToAlert(userId));
         await db.SaveChangesAsync();
         message = "Alert saved. The background scanner will check it automatically.";
     }
 
-    private sealed class SearchInput
+    public sealed class SearchInput
     {
+        [Required]
         public LocationType OriginType { get; set; } = LocationType.Airport;
+
+        [Required, StringLength(120, MinimumLength = 2)]
         public string Origin { get; set; } = "JFK";
+
+        [Required]
         public LocationType DestinationType { get; set; } = LocationType.Continent;
+
+        [Required, StringLength(120, MinimumLength = 2)]
         public string Destination { get; set; } = "Europe";
-        public DateTime DepartDate { get; set; } = DateTime.Today.AddDays(14);
+
+        [Required]
+        public DateTime? DepartDate { get; set; } = DateTime.Today.AddDays(14);
+
         public DateTime? ReturnDate { get; set; } = DateTime.Today.AddDays(21);
+
+        [Range(1, 9)]
         public int Adults { get; set; } = 1;
+
+        [Range(0, 9)]
         public int Children { get; set; }
+
+        [Range(0, 9)]
         public int Infants { get; set; }
+
         public CabinClass Cabin { get; set; }
         public bool DirectOnly { get; set; }
+
+        [Range(0, 4)]
         public int? MaxStops { get; set; } = 1;
+
+        [Range(0, 9)]
         public int CheckedBags { get; set; }
+
+        [Required, StringLength(3, MinimumLength = 3)]
         public string Currency { get; set; } = "USD";
+
+        [Range(1, 999999)]
         public decimal TargetPrice { get; set; } = 400;
 
-        public FlightSearchQuery ToQuery() => new(
-            OriginType,
-            Origin.Trim(),
-            DestinationType,
-            Destination.Trim(),
-            DateOnly.FromDateTime(DepartDate),
-            DateOnly.FromDateTime(DepartDate),
-            ReturnDate is null ? null : DateOnly.FromDateTime(ReturnDate.Value),
-            ReturnDate is null ? null : DateOnly.FromDateTime(ReturnDate.Value),
-            Math.Max(1, Adults),
-            Math.Max(0, Children),
-            Math.Max(0, Infants),
-            Cabin,
-            DirectOnly,
-            MaxStops,
-            Math.Max(0, CheckedBags),
-            Currency.Trim().ToUpperInvariant());
+        public bool ValidateDateRange(out string? validationMessage)
+        {
+            validationMessage = null;
+            if (DepartDate is null)
+            {
+                validationMessage = "Pick a depart date.";
+                return false;
+            }
+
+            if (DepartDate.Value.Date < DateTime.Today)
+            {
+                validationMessage = "Depart date cannot be earlier than today.";
+                return false;
+            }
+
+            if (ReturnDate is not null && ReturnDate.Value.Date < DateTime.Today)
+            {
+                validationMessage = "Return date cannot be earlier than today.";
+                return false;
+            }
+
+            if (ReturnDate is not null && ReturnDate.Value.Date < DepartDate.Value.Date)
+            {
+                var picked = ReturnDate.Value.Date;
+                DepartDate = picked;
+                ReturnDate = null;
+            }
+
+            return true;
+        }
+
+        public FlightSearchQuery ToQuery()
+        {
+            var depart = DepartDate?.Date ?? DateTime.Today;
+            var returnDate = ReturnDate?.Date;
+            var currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.Trim().ToUpperInvariant();
+
+            return new FlightSearchQuery(
+                OriginType,
+                Origin.Trim(),
+                DestinationType,
+                Destination.Trim(),
+                DateOnly.FromDateTime(depart),
+                DateOnly.FromDateTime(depart),
+                returnDate is null ? null : DateOnly.FromDateTime(returnDate.Value),
+                returnDate is null ? null : DateOnly.FromDateTime(returnDate.Value),
+                Math.Max(1, Adults),
+                Math.Max(0, Children),
+                Math.Max(0, Infants),
+                Cabin,
+                DirectOnly,
+                MaxStops,
+                Math.Max(0, CheckedBags),
+                currency);
+        }
 
         public PriceAlert ToAlert(string userId)
         {
@@ -299,4 +439,16 @@
             ? $"{location.Name} ({location.Code}) - {location.CountryName}"
             : $"{location.Name} - {location.Type}";
     }
+
+    private static string CurrencySymbol(string? code)
+    {
+        return Currencies.FirstOrDefault(currency => currency.Code.Equals(code?.Trim(), StringComparison.OrdinalIgnoreCase))?.Symbol ?? "¤";
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        return duration <= TimeSpan.Zero ? "duration unavailable" : $"{(int)duration.TotalHours} h {duration.Minutes} m";
+    }
+
+    private sealed record CurrencyOption(string Code, string Symbol, string Name);
 }
