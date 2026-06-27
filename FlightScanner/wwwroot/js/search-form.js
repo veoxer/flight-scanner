@@ -29,6 +29,22 @@
 
     var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     var dayNames = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    var currencies = [
+        { code: "MAD", symbol: "د.م.", name: "Moroccan Dirham" },
+        { code: "USD", symbol: "$", name: "US Dollar" },
+        { code: "EUR", symbol: "€", name: "Euro" },
+        { code: "GBP", symbol: "£", name: "British Pound" },
+        { code: "CAD", symbol: "C$", name: "Canadian Dollar" },
+        { code: "AUD", symbol: "A$", name: "Australian Dollar" },
+        { code: "JPY", symbol: "¥", name: "Japanese Yen" },
+        { code: "CNY", symbol: "¥", name: "Chinese Yuan" },
+        { code: "AED", symbol: "د.إ", name: "UAE Dirham" },
+        { code: "SAR", symbol: "﷼", name: "Saudi Riyal" },
+        { code: "CHF", symbol: "CHF", name: "Swiss Franc" },
+        { code: "BRL", symbol: "R$", name: "Brazilian Real" },
+        { code: "ZAR", symbol: "R", name: "South African Rand" },
+        { code: "INR", symbol: "₹", name: "Indian Rupee" }
+    ];
 
     function maskDateField(field) {
         var digits = field.value.replace(/\D/g, "").slice(0, 8);
@@ -92,6 +108,12 @@
         var daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
         var calendar = document.createElement("div");
         calendar.className = "date-calendar";
+        calendar.addEventListener("mousedown", function (event) {
+            event.stopPropagation();
+        });
+        calendar.addEventListener("click", function (event) {
+            event.stopPropagation();
+        });
 
         var header = document.createElement("div");
         header.className = "date-calendar-header";
@@ -124,9 +146,6 @@
             var button = document.createElement("button");
             button.type = "button";
             button.textContent = String(day);
-            if (date < today) {
-                button.disabled = true;
-            }
             if (selected && date.getTime() === selected.getTime()) {
                 button.classList.add("selected");
             }
@@ -145,10 +164,14 @@
             grid.appendChild(button);
         }
 
-        previous.addEventListener("click", function () {
+        previous.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
             renderCalendar(field, depart, ret, new Date(month.getFullYear(), month.getMonth() - 1, 1));
         });
-        next.addEventListener("click", function () {
+        next.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
             renderCalendar(field, depart, ret, new Date(month.getFullYear(), month.getMonth() + 1, 1));
         });
 
@@ -206,6 +229,98 @@
                 document.querySelectorAll(".date-calendar").forEach(function (calendar) {
                     calendar.remove();
                 });
+            }
+        });
+    }
+
+    function bindRouteSwap(root) {
+        var button = root.querySelector("[data-route-swap]");
+        if (!button || button.dataset.boundSwap === "true") {
+            return;
+        }
+
+        button.dataset.boundSwap = "true";
+        button.addEventListener("click", function () {
+            var origin = root.querySelector("[data-location-input='origin']");
+            var destination = root.querySelector("[data-location-input='destination']");
+            var originType = root.querySelector("[data-location-type='origin']");
+            var destinationType = root.querySelector("[data-location-type='destination']");
+            var originValue = origin.value;
+            var originTypeValue = originType.value;
+            origin.value = destination.value;
+            destination.value = originValue;
+            originType.value = destinationType.value;
+            destinationType.value = originTypeValue;
+        });
+    }
+
+    function bindCurrencyCombobox(root) {
+        var box = root.querySelector("[data-currency-combobox]");
+        if (!box || box.dataset.boundCurrency === "true") {
+            return;
+        }
+
+        box.dataset.boundCurrency = "true";
+        var hidden = box.querySelector("[data-currency-value]");
+        var toggle = box.querySelector("[data-currency-toggle]");
+        var menu = box.querySelector("[data-currency-menu]");
+        var search = box.querySelector("[data-currency-search]");
+        var options = box.querySelector("[data-currency-options]");
+        var symbol = box.querySelector("[data-currency-symbol]");
+        var code = box.querySelector("[data-currency-code]");
+
+        function selectCurrency(currency) {
+            hidden.value = currency.code;
+            symbol.textContent = currency.symbol;
+            code.textContent = currency.code;
+            menu.hidden = true;
+        }
+
+        function render(filter) {
+            var query = (filter || "").trim().toLowerCase();
+            options.replaceChildren();
+            if (query.length === 0) {
+                return;
+            }
+
+            currencies
+                .filter(function (currency) {
+                    return currency.code.toLowerCase().includes(query) ||
+                        currency.name.toLowerCase().includes(query) ||
+                        currency.symbol.toLowerCase().includes(query);
+                })
+                .slice(0, 12)
+                .forEach(function (currency) {
+                    var item = document.createElement("button");
+                    item.type = "button";
+                    item.className = "currency-option";
+                    item.innerHTML = "<span></span><strong></strong><small></small>";
+                    item.querySelector("span").textContent = currency.symbol;
+                    item.querySelector("strong").textContent = currency.code;
+                    item.querySelector("small").textContent = currency.name;
+                    item.addEventListener("click", function () {
+                        selectCurrency(currency);
+                    });
+                    options.appendChild(item);
+                });
+        }
+
+        toggle.addEventListener("click", function () {
+            menu.hidden = !menu.hidden;
+            search.value = "";
+            options.replaceChildren();
+            if (!menu.hidden) {
+                search.focus();
+            }
+        });
+
+        search.addEventListener("input", function () {
+            render(search.value);
+        });
+
+        document.addEventListener("click", function (event) {
+            if (!box.contains(event.target)) {
+                menu.hidden = true;
             }
         });
     }
@@ -366,9 +481,11 @@
             return;
         }
 
+        bindRouteSwap(root);
         bindDatePair(root);
         bindLocationAutocomplete(root);
         bindTravellerPanel(root);
+        bindCurrencyCombobox(root);
     }
 
     document.addEventListener("DOMContentLoaded", bindSearchForm);

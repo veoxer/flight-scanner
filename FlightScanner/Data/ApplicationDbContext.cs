@@ -35,6 +35,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<PriceAlert>()
+            .Property(alert => alert.TargetMode)
+            .HasMaxLength(8)
+            .HasDefaultValue("Max");
+
+        builder.Entity<PriceAlert>()
             .Property(alert => alert.TargetPrice)
             .HasPrecision(10, 2);
 

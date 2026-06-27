@@ -67,5 +67,40 @@
     }
   };
 
+  function bindNotificationButton() {
+    const button = document.querySelector("[data-enable-notifications]");
+    const status = document.querySelector("[data-notification-status]");
+    if (!button || !status || button.dataset.boundNotifications === "true") {
+      return;
+    }
+
+    button.dataset.boundNotifications = "true";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.hidden = false;
+      status.textContent = "...";
+
+      try {
+        const permission = await window.flightNotifications.requestPermission();
+        const subscription = await window.flightNotifications.subscribePush();
+        if (subscription === "subscribed") {
+          status.textContent = button.dataset.statusSubscribed || "Push notifications are enabled for this device.";
+        } else if (subscription === "missing-public-key") {
+          status.textContent = button.dataset.statusMissingKey || "Browser notifications are allowed. Add VAPID keys to enable push.";
+        } else if (subscription === "unsupported") {
+          status.textContent = button.dataset.statusUnsupported || "This browser does not support push notifications.";
+        } else {
+          status.textContent = (button.dataset.statusPermission || "Notification permission: {0}.").replace("{0}", permission);
+        }
+      } catch (error) {
+        status.textContent = error.message || "Could not enable notifications.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", bindNotificationButton);
+  document.addEventListener("enhancedload", bindNotificationButton);
   ensureServiceWorker();
 })();

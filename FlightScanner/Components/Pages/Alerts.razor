@@ -3,19 +3,22 @@
 @using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthStateProvider
-@inject IJSRuntime Js
 
 <PageTitle>@UiText.T("Alerts")</PageTitle>
 
 <div class="page-title-row">
     <h1>@UiText.T("PriceAlerts")</h1>
-    <button class="btn btn-outline-primary" @onclick="EnableNotificationsAsync">@UiText.T("EnableNotifications")</button>
+    <button type="button"
+            class="btn btn-outline-primary notification-action"
+            data-enable-notifications
+            data-status-subscribed="@UiText.T("PushEnabled")"
+            data-status-missing-key="@UiText.T("PushMissingKey")"
+            data-status-unsupported="@UiText.T("PushUnsupported")"
+            data-status-permission="@UiText.T("NotificationPermission")">
+        @UiText.T("EnableNotifications")
+    </button>
 </div>
-
-@if (!string.IsNullOrWhiteSpace(message))
-{
-    <div class="alert alert-info">@message</div>
-}
+<div class="notification-status" data-notification-status hidden></div>
 
 @if (alerts.Count == 0)
 {
@@ -36,12 +39,18 @@ else
                     <span>@alert.DepartFrom.ToString("yyyy-MM-dd") @UiText.T("ToLower") @alert.DepartTo.ToString("yyyy-MM-dd") - @alert.Adults @UiText.T("Adults") - @alert.Cabin</span>
                 </div>
                 <div>
-                    <strong>@alert.TargetPrice.ToString("0.##") @alert.Currency</strong>
+                    <strong>@(alert.TargetMode == "Min" ? UiText.T("MinFare") : UiText.T("MaxFare")): @alert.TargetPrice.ToString("0.##") @alert.Currency</strong>
                     <span>@UiText.T("LastSeen"): @(alert.LastObservedPrice?.ToString("0.##") ?? UiText.T("NotChecked"))</span>
                 </div>
                 <div class="row-actions">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleAsync(alert.Id)">@(alert.IsActive ? UiText.T("Pause") : UiText.T("Resume"))</button>
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(alert.Id)">@UiText.T("Delete")</button>
+                    <form method="post" action="@($"/alerts/{alert.Id}/toggle")" class="inline-action-form">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">@(alert.IsActive ? UiText.T("Pause") : UiText.T("Resume"))</button>
+                    </form>
+                    <form method="post" action="@($"/alerts/{alert.Id}/delete")" class="inline-action-form">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">@UiText.T("Delete")</button>
+                    </form>
                 </div>
             </article>
         }
@@ -77,7 +86,6 @@ else
     private List<PriceAlert> alerts = [];
     private List<NotificationAttempt> attempts = [];
     private string? userId;
-    private string? message;
 
     protected override async Task OnInitializedAsync()
     {
@@ -105,34 +113,4 @@ else
             .ToListAsync();
     }
 
-    private async Task ToggleAsync(int id)
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var alert = await db.PriceAlerts.FirstAsync(item => item.Id == id && item.UserId == userId);
-        alert.IsActive = !alert.IsActive;
-        await db.SaveChangesAsync();
-        await LoadAsync();
-    }
-
-    private async Task DeleteAsync(int id)
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var alert = await db.PriceAlerts.FirstAsync(item => item.Id == id && item.UserId == userId);
-        db.PriceAlerts.Remove(alert);
-        await db.SaveChangesAsync();
-        await LoadAsync();
-    }
-
-    private async Task EnableNotificationsAsync()
-    {
-        var permission = await Js.InvokeAsync<string>("flightNotifications.requestPermission");
-        var subscription = await Js.InvokeAsync<string>("flightNotifications.subscribePush");
-        message = subscription switch
-        {
-            "subscribed" => UiText.T("PushEnabled"),
-            "missing-public-key" => UiText.T("PushMissingKey"),
-            "unsupported" => UiText.T("PushUnsupported"),
-            _ => string.Format(System.Globalization.CultureInfo.CurrentCulture, UiText.T("NotificationPermission"), permission)
-        };
-    }
 }

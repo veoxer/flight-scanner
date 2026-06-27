@@ -67,7 +67,9 @@ public sealed class AlertScannerService(
                 }
 
                 alert.LastObservedPrice = best.Price;
-                var triggered = best.Price <= alert.TargetPrice;
+                var triggered = alert.TargetMode.Equals("Min", StringComparison.OrdinalIgnoreCase)
+                    ? best.Price >= alert.TargetPrice
+                    : best.Price <= alert.TargetPrice;
                 db.FlightScanResults.Add(new FlightScanResult
                 {
                     PriceAlertId = alert.Id,

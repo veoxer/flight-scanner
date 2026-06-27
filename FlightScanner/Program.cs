@@ -222,6 +222,52 @@ app.MapGet("/api/push/public-key", async (IDbContextFactory<ApplicationDbContext
     return Results.Ok(new { publicKey = options.PublicKey });
 }).RequireAuthorization();
 
+app.MapPost("/alerts/{id:int}/toggle", async (
+    int id,
+    ClaimsPrincipal user,
+    IDbContextFactory<ApplicationDbContext> dbFactory) =>
+{
+    var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (string.IsNullOrWhiteSpace(userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var alert = await db.PriceAlerts.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+    if (alert is null)
+    {
+        return Results.NotFound();
+    }
+
+    alert.IsActive = !alert.IsActive;
+    await db.SaveChangesAsync();
+    return Results.LocalRedirect("/alerts");
+}).RequireAuthorization();
+
+app.MapPost("/alerts/{id:int}/delete", async (
+    int id,
+    ClaimsPrincipal user,
+    IDbContextFactory<ApplicationDbContext> dbFactory) =>
+{
+    var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (string.IsNullOrWhiteSpace(userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var alert = await db.PriceAlerts.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+    if (alert is null)
+    {
+        return Results.NotFound();
+    }
+
+    db.PriceAlerts.Remove(alert);
+    await db.SaveChangesAsync();
+    return Results.LocalRedirect("/alerts");
+}).RequireAuthorization();
+
 app.MapPost("/api/push/subscribe", async (
     PushSubscriptionInput input,
     ClaimsPrincipal user,

@@ -23,6 +23,7 @@ public sealed class StartupInitializer(
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
         await db.Database.EnsureCreatedAsync(cancellationToken);
+        await EnsureSchemaAsync(db, cancellationToken);
 
         foreach (var role in new[] { "Admin", "User" })
         {
@@ -66,6 +67,16 @@ public sealed class StartupInitializer(
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Application startup initialization completed.");
+    }
+
+    private static async Task EnsureSchemaAsync(ApplicationDbContext db, CancellationToken cancellationToken)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "PriceAlerts"
+            ADD COLUMN IF NOT EXISTS "TargetMode" character varying(8) NOT NULL DEFAULT 'Max';
+            """,
+            cancellationToken);
     }
 
     private async Task<IReadOnlyList<FlightLocation>> TryImportWorldLocationsAsync(

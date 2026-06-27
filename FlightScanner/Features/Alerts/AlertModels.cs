@@ -27,7 +27,9 @@ public sealed class PriceAlert
     public int? MaxStops { get; set; }
     public int CheckedBags { get; set; }
     [MaxLength(3)]
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "MAD";
+    [MaxLength(8)]
+    public string TargetMode { get; set; } = "Max";
     public decimal TargetPrice { get; set; }
     public bool NotifyByPush { get; set; } = true;
     public bool NotifyByEmail { get; set; } = true;

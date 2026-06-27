@@ -26,6 +26,8 @@
                 <div class="location-menu" data-location-menu="origin" hidden></div>
             </div>
 
+            <button type="button" class="route-swap-button" data-route-swap aria-label="@T("SwapRoute")">⇄</button>
+
             <div class="travel-field location-field" data-location-box="destination">
                 <label for="destination">@T("To")</label>
                 <input id="destination" name="destination" class="travel-input location-input" value="@Destination" data-location-input="destination" autocomplete="off" placeholder="@T("CountryCityAirport")" />
@@ -110,9 +112,16 @@
             </label>
             <div class="filter-inline">
                 <label for="currency">@T("Currency")</label>
-                <div class="currency-control">
-                    <span class="currency-glyph" aria-hidden="true">@CurrencySymbol(Currency)</span>
-                    <input id="currency" name="currency" class="form-control currency-input" list="currency-options" maxlength="3" value="@Currency" />
+                <div class="currency-combobox" data-currency-combobox>
+                    <input type="hidden" id="currency" name="currency" value="@Currency" data-currency-value />
+                    <button type="button" class="currency-combobox-button" data-currency-toggle>
+                        <span data-currency-symbol>@CurrencySymbol(Currency)</span>
+                        <strong data-currency-code>@Currency</strong>
+                    </button>
+                    <div class="currency-menu" data-currency-menu hidden>
+                        <input type="search" class="form-control" data-currency-search placeholder="@T("SearchCurrency")" />
+                        <div class="currency-options" data-currency-options></div>
+                    </div>
                 </div>
             </div>
             <div class="filter-inline">
@@ -125,19 +134,18 @@
             </div>
             <div class="filter-inline">
                 <label for="targetPrice">@T("AlertTarget")</label>
-                <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" />
+                <div class="target-control">
+                    <select name="targetMode" class="form-select" aria-label="@T("AlertTargetMode")">
+                        <option value="Max" selected="@(TargetMode == "Max")">@T("MaxFare")</option>
+                        <option value="Min" selected="@(TargetMode == "Min")">@T("MinFare")</option>
+                    </select>
+                    <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" />
+                </div>
             </div>
             <button type="submit" name="saveAlert" value="true" class="btn btn-outline-light save-alert-button">@T("SaveAlert")</button>
         </div>
     </form>
 </section>
-
-<datalist id="currency-options">
-    @foreach (var currency in Currencies)
-    {
-        <option value="@currency.Code" label="@($"{currency.Symbol} {currency.Name}")"></option>
-    }
-</datalist>
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
@@ -258,17 +266,20 @@
     public int CheckedBags { get; set; }
 
     [Parameter, SupplyParameterFromQuery(Name = "currency")]
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "MAD";
+
+    [Parameter, SupplyParameterFromQuery(Name = "targetMode")]
+    public string TargetMode { get; set; } = "Max";
 
     [Parameter, SupplyParameterFromQuery(Name = "targetPrice")]
     public string? TargetPrice { get; set; }
 
     private static readonly IReadOnlyList<CurrencyOption> Currencies =
     [
+        new("MAD", "د.م.", "Moroccan Dirham"),
         new("USD", "$", "US Dollar"),
         new("EUR", "€", "Euro"),
         new("GBP", "£", "British Pound"),
-        new("MAD", "د.م.", "Moroccan Dirham"),
         new("CAD", "C$", "Canadian Dollar"),
         new("AUD", "A$", "Australian Dollar"),
         new("JPY", "¥", "Japanese Yen"),
@@ -357,6 +368,7 @@
             MaxStops = query.MaxStops,
             CheckedBags = query.CheckedBags,
             Currency = query.Currency,
+            TargetMode = NormalizeTargetMode(TargetMode),
             TargetPrice = ParseTargetPrice()
         });
         await db.SaveChangesAsync();
@@ -444,6 +456,7 @@
         Depart = query.DepartFrom.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
         ReturnDate = query.ReturnFrom?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "";
         Currency = query.Currency;
+        TargetMode = NormalizeTargetMode(TargetMode);
     }
 
     private LocationType ParseLocationType(string value, string locationValue)
@@ -508,6 +521,11 @@
         return decimal.TryParse(TargetPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var value) && value > 0
             ? value
             : 0;
+    }
+
+    private static string NormalizeTargetMode(string? mode)
+    {
+        return mode?.Equals("Min", StringComparison.OrdinalIgnoreCase) == true ? "Min" : "Max";
     }
 
     private static string AirlineLogoUrl(string airline)
