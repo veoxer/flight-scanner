@@ -1,5 +1,6 @@
 @page "/setup"
 @attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject SetupState SetupState
@@ -21,18 +22,21 @@
     }
     else
     {
-        <EditForm Model="input" OnValidSubmit="CreateAdminAsync" FormName="setup-admin" class="panel-form">
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAdminAsync" FormName="setup-admin" class="panel-form">
             <DataAnnotationsValidator />
             <ValidationSummary class="text-danger" />
 
             <label class="form-label">Display name</label>
-            <InputText class="form-control" @bind-Value="input.DisplayName" />
+            <InputText class="form-control" @bind-Value="Input.DisplayName" />
+            <ValidationMessage For="() => Input.DisplayName" class="text-danger" />
 
             <label class="form-label mt-3">Email</label>
-            <InputText class="form-control" type="email" @bind-Value="input.Email" />
+            <InputText class="form-control" type="email" @bind-Value="Input.Email" />
+            <ValidationMessage For="() => Input.Email" class="text-danger" />
 
             <label class="form-label mt-3">Password</label>
-            <InputText class="form-control" type="password" @bind-Value="input.Password" />
+            <InputText class="form-control" type="password" @bind-Value="Input.Password" />
+            <ValidationMessage For="() => Input.Password" class="text-danger" />
 
             <button class="btn btn-primary mt-4" type="submit" disabled="@busy">Create admin</button>
         </EditForm>
@@ -45,13 +49,16 @@
 </div>
 
 @code {
-    private readonly SetupInput input = new();
     private bool isComplete;
     private bool busy;
     private string? message;
 
+    [SupplyParameterFromForm]
+    private SetupInput Input { get; set; } = default!;
+
     protected override async Task OnInitializedAsync()
     {
+        Input ??= new();
         isComplete = await SetupState.IsCompleteAsync();
     }
 
@@ -62,14 +69,14 @@
 
         var user = new ApplicationUser
         {
-            UserName = input.Email,
-            Email = input.Email,
+            UserName = Input.Email,
+            Email = Input.Email,
             EmailConfirmed = true,
-            DisplayName = input.DisplayName,
+            DisplayName = Input.DisplayName,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        var result = await UserManager.CreateAsync(user, input.Password);
+        var result = await UserManager.CreateAsync(user, Input.Password);
         if (!result.Succeeded)
         {
             message = string.Join(" ", result.Errors.Select(error => error.Description));
@@ -85,15 +92,15 @@
 
     private sealed class SetupInput
     {
-        [System.ComponentModel.DataAnnotations.Required]
+        [Required]
         public string DisplayName { get; set; } = "Admin";
 
-        [System.ComponentModel.DataAnnotations.Required]
-        [System.ComponentModel.DataAnnotations.EmailAddress]
+        [Required]
+        [EmailAddress]
         public string Email { get; set; } = "";
 
-        [System.ComponentModel.DataAnnotations.Required]
-        [System.ComponentModel.DataAnnotations.MinLength(10)]
+        [Required]
+        [MinLength(10)]
         public string Password { get; set; } = "";
     }
 }
