@@ -39,7 +39,7 @@ else
                     <span>@alert.DepartFrom.ToString("yyyy-MM-dd") @UiText.T("ToLower") @alert.DepartTo.ToString("yyyy-MM-dd") - @alert.Adults @UiText.T("Adults") - @alert.Cabin</span>
                 </div>
                 <div>
-                    <strong>@(alert.TargetMode == "Min" ? UiText.T("MinFare") : UiText.T("MaxFare")): @alert.TargetPrice.ToString("0.##") @alert.Currency</strong>
+                    <strong>@FormatAlertTargets(alert)</strong>
                     <span>@UiText.T("LastSeen"): @(alert.LastObservedPrice?.ToString("0.##") ?? UiText.T("NotChecked"))</span>
                 </div>
                 <div class="row-actions">
@@ -111,6 +111,25 @@ else
             .OrderByDescending(attempt => attempt.CreatedAt)
             .Take(20)
             .ToListAsync();
+    }
+
+    private static string FormatAlertTargets(PriceAlert alert)
+    {
+        var parts = new List<string>();
+        var maxTarget = alert.MaxTargetPrice ?? (!alert.TargetMode.Equals("Min", StringComparison.OrdinalIgnoreCase) && alert.TargetPrice > 0 ? alert.TargetPrice : null);
+        var minTarget = alert.MinTargetPrice ?? (alert.TargetMode.Equals("Min", StringComparison.OrdinalIgnoreCase) && alert.TargetPrice > 0 ? alert.TargetPrice : null);
+
+        if (maxTarget is not null)
+        {
+            parts.Add($"{UiText.T("MaxFare")}: {maxTarget.Value:0.##} {alert.Currency}");
+        }
+
+        if (minTarget is not null)
+        {
+            parts.Add($"{UiText.T("MinFare")}: {minTarget.Value:0.##} {alert.Currency}");
+        }
+
+        return parts.Count > 0 ? string.Join(" / ", parts) : $"{alert.TargetPrice:0.##} {alert.Currency}";
     }
 
 }

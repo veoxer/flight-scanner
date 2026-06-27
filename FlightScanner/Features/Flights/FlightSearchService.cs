@@ -1,11 +1,9 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Xml;
 using FlightScanner.Data;
 using FlightScanner.Features.Integrations;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace FlightScanner.Features.Flights;
 
@@ -18,7 +16,6 @@ public interface IFlightSearchService
 public sealed class FlightSearchService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     IHttpClientFactory httpClientFactory,
-    IMemoryCache memoryCache,
     ILogger<FlightSearchService> logger) : IFlightSearchService
 {
     private static readonly IReadOnlyList<AirlineDirectoryEntry> AirlineDirectory =
@@ -105,9 +102,10 @@ public sealed class FlightSearchService(
         }
 
         var options = JsonSerializer.Deserialize<FlightProviderOptions>(setting.SettingsJson, JsonOptions()) ?? new();
-        if (setting.Enabled && options.ProviderType.Equals("Amadeus", StringComparison.OrdinalIgnoreCase))
+        if (setting.Enabled && (options.ProviderType.Equals("SerpApi", StringComparison.OrdinalIgnoreCase) ||
+            options.ProviderType.Equals("Amadeus", StringComparison.OrdinalIgnoreCase)))
         {
-            return await SearchAmadeusAsync(query, options, cancellationToken);
+            return await SearchSerpApiAsync(query, options, cancellationToken);
         }
 
         if (string.IsNullOrWhiteSpace(options.EndpointUrl) || string.IsNullOrWhiteSpace(options.BodyTemplate))
@@ -163,79 +161,54 @@ public sealed class FlightSearchService(
         }
     }
 
-    private async Task<IReadOnlyList<FlightOffer>> SearchAmadeusAsync(FlightSearchQuery query, FlightProviderOptions options, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<FlightOffer>> SearchSerpApiAsync(FlightSearchQuery query, FlightProviderOptions options, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(options.AmadeusClientId) || string.IsNullOrWhiteSpace(options.AmadeusClientSecret))
+        if (string.IsNullOrWhiteSpace(options.SerpApiApiKey))
         {
             return [];
         }
 
         try
         {
-            var baseUrl = GetAmadeusBaseUrl(options);
-            var token = await GetAmadeusTokenAsync(baseUrl, options, cancellationToken);
-            var routePairs = await ResolveRoutePairsAsync(query, cancellationToken);
+            var routePairs = await ResolveRoutePairsAsync(query, Math.Clamp(options.SerpApiMaxRoutePairs, 1, 12), cancellationToken);
             var offers = new List<FlightOffer>();
 
-            foreach (var (origin, destination) in routePairs.Take(8))
+            foreach (var (origin, destination) in routePairs)
             {
-                var requestUrl = BuildAmadeusFlightOffersUrl(baseUrl, query, origin, destination, Math.Clamp(options.AmadeusMaxOffers, 1, 50));
+                var requestUrl = BuildSerpApiUrl(query, options, origin, destination);
                 using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-                var client = httpClientFactory.CreateClient("amadeus");
+                var client = httpClientFactory.CreateClient("serpapi");
                 using var response = await client.SendAsync(request, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
-                    logger.LogWarning("Amadeus search failed with status {StatusCode}.", response.StatusCode);
+                    logger.LogWarning("SerpApi Google Flights search failed with status {StatusCode}.", response.StatusCode);
                     continue;
                 }
 
                 using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-                offers.AddRange(ParseAmadeusOffers(document.RootElement, query, origin, destination));
+                if (document.RootElement.TryGetProperty("error", out var error))
+                {
+                    logger.LogWarning("SerpApi Google Flights returned an error: {Error}", error.GetString());
+                    continue;
+                }
+
+                offers.AddRange(ParseSerpApiOffers(document.RootElement, query, origin, destination));
             }
 
             return offers
                 .OrderBy(offer => offer.Price)
-                .Take(Math.Clamp(options.AmadeusMaxOffers, 1, 50))
+                .Take(Math.Clamp(options.SerpApiMaxOffers, 1, 50))
                 .ToList();
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Amadeus flight search failed.");
+            logger.LogWarning(ex, "SerpApi Google Flights search failed.");
             return [];
         }
     }
 
-    private async Task<string> GetAmadeusTokenAsync(string baseUrl, FlightProviderOptions options, CancellationToken cancellationToken)
-    {
-        var cacheKey = $"amadeus-token:{baseUrl}:{options.AmadeusClientId}";
-        if (memoryCache.TryGetValue(cacheKey, out string? token) && !string.IsNullOrWhiteSpace(token))
-        {
-            return token;
-        }
-
-        var client = httpClientFactory.CreateClient("amadeus");
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v1/security/oauth2/token")
-        {
-            Content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["grant_type"] = "client_credentials",
-                ["client_id"] = options.AmadeusClientId,
-                ["client_secret"] = options.AmadeusClientSecret
-            })
-        };
-
-        using var response = await client.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-        token = document.RootElement.GetProperty("access_token").GetString() ?? "";
-        var expiresIn = document.RootElement.TryGetProperty("expires_in", out var expires) ? expires.GetInt32() : 1800;
-        memoryCache.Set(cacheKey, token, TimeSpan.FromSeconds(Math.Max(60, expiresIn - 60)));
-        return token;
-    }
-
-    private async Task<IReadOnlyList<(string Origin, string Destination)>> ResolveRoutePairsAsync(FlightSearchQuery query, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<(string Origin, string Destination)>> ResolveRoutePairsAsync(FlightSearchQuery query, int maxRoutePairs, CancellationToken cancellationToken)
     {
         var origins = await ResolveLocationCodesAsync(query.OriginType, query.Origin, cancellationToken);
         var destinations = await ResolveLocationCodesAsync(query.DestinationType, query.Destination, cancellationToken);
@@ -243,7 +216,7 @@ public sealed class FlightSearchService(
         return origins
             .SelectMany(origin => destinations.Select(destination => (Origin: origin, Destination: destination)))
             .Where(pair => !pair.Origin.Equals(pair.Destination, StringComparison.OrdinalIgnoreCase))
-            .Take(12)
+            .Take(maxRoutePairs)
             .ToList();
     }
 
@@ -319,21 +292,33 @@ public sealed class FlightSearchService(
             .ToList();
     }
 
-    private static string BuildAmadeusFlightOffersUrl(string baseUrl, FlightSearchQuery query, string origin, string destination, int maxOffers)
+    private static string BuildSerpApiUrl(FlightSearchQuery query, FlightProviderOptions options, string origin, string destination)
     {
         var parameters = new Dictionary<string, string?>
         {
-            ["originLocationCode"] = origin,
-            ["destinationLocationCode"] = destination,
-            ["departureDate"] = query.DepartFrom.ToString("yyyy-MM-dd"),
+            ["engine"] = "google_flights",
+            ["api_key"] = options.SerpApiApiKey,
+            ["departure_id"] = origin,
+            ["arrival_id"] = destination,
+            ["outbound_date"] = query.DepartFrom.ToString("yyyy-MM-dd"),
             ["adults"] = query.Adults.ToString(),
-            ["currencyCode"] = query.Currency,
-            ["max"] = maxOffers.ToString()
+            ["currency"] = query.Currency,
+            ["hl"] = NormalizeTwoLetterCode(options.SerpApiLanguage, "en"),
+            ["gl"] = NormalizeTwoLetterCode(options.SerpApiGoogleCountry, "ma"),
+            ["travel_class"] = SerpApiTravelClass(query.Cabin),
+            ["sort_by"] = "2",
+            ["deep_search"] = options.SerpApiDeepSearch ? "true" : null,
+            ["output"] = "json"
         };
 
         if (query.ReturnFrom is { } returnDate)
         {
-            parameters["returnDate"] = returnDate.ToString("yyyy-MM-dd");
+            parameters["type"] = "1";
+            parameters["return_date"] = returnDate.ToString("yyyy-MM-dd");
+        }
+        else
+        {
+            parameters["type"] = "2";
         }
 
         if (query.Children > 0)
@@ -343,101 +328,178 @@ public sealed class FlightSearchService(
 
         if (query.Infants > 0)
         {
-            parameters["infants"] = query.Infants.ToString();
+            parameters["infants_on_lap"] = query.Infants.ToString();
         }
 
-        if (query.DirectOnly)
+        var stops = SerpApiStops(query);
+        if (stops > 0)
         {
-            parameters["nonStop"] = "true";
+            parameters["stops"] = stops.ToString();
         }
-
-        parameters["travelClass"] = query.Cabin switch
-        {
-            CabinClass.PremiumEconomy => "PREMIUM_ECONOMY",
-            CabinClass.Business => "BUSINESS",
-            CabinClass.First => "FIRST",
-            _ => "ECONOMY"
-        };
 
         var queryString = string.Join("&", parameters
             .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Value))
             .Select(parameter => $"{Uri.EscapeDataString(parameter.Key)}={Uri.EscapeDataString(parameter.Value!)}"));
 
-        return $"{baseUrl}/v2/shopping/flight-offers?{queryString}";
+        return $"https://serpapi.com/search?{queryString}";
     }
 
-    private static IEnumerable<FlightOffer> ParseAmadeusOffers(JsonElement root, FlightSearchQuery query, string origin, string destination)
+    private static IEnumerable<FlightOffer> ParseSerpApiOffers(JsonElement root, FlightSearchQuery query, string origin, string destination)
     {
-        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+        foreach (var offer in ReadSerpApiOfferArray(root, "best_flights").Concat(ReadSerpApiOfferArray(root, "other_flights")))
+        {
+            if (!TryGetDecimal(offer, "price", out var price))
+            {
+                continue;
+            }
+
+            var flights = offer.TryGetProperty("flights", out var flightsElement) && flightsElement.ValueKind == JsonValueKind.Array
+                ? flightsElement.EnumerateArray().ToList()
+                : [];
+            if (flights.Count == 0)
+            {
+                continue;
+            }
+
+            var firstFlight = flights[0];
+            var lastFlight = flights[^1];
+            var airline = ReadString(firstFlight, "airline") ?? "Airline";
+            var flightNumber = ReadString(firstFlight, "flight_number") ?? airline;
+            var stops = Math.Max(0, flights.Count - 1);
+            var duration = TryGetInt(offer, "total_duration", out var totalDuration)
+                ? TimeSpan.FromMinutes(totalDuration)
+                : TimeSpan.FromMinutes(flights.Sum(flight => TryGetInt(flight, "duration", out var durationMinutes) ? durationMinutes : 0));
+            var departDate = ReadAirportDate(firstFlight, "departure_airport") ?? query.DepartFrom;
+            var offerOrigin = ReadAirportId(firstFlight, "departure_airport") ?? origin;
+            var offerDestination = ReadAirportId(lastFlight, "arrival_airport") ?? destination;
+            var bookingUrl = root.TryGetProperty("search_metadata", out var metadata)
+                ? ReadString(metadata, "google_flights_url") ?? "https://www.google.com/travel/flights"
+                : "https://www.google.com/travel/flights";
+
+            yield return new FlightOffer(
+                "SerpApi Google Flights",
+                airline,
+                flightNumber,
+                offerOrigin,
+                offerDestination,
+                departDate,
+                query.ReturnFrom,
+                price,
+                query.Currency,
+                stops,
+                duration,
+                bookingUrl);
+        }
+    }
+
+    private static IEnumerable<JsonElement> ReadSerpApiOfferArray(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var offers) || offers.ValueKind != JsonValueKind.Array)
         {
             yield break;
         }
 
-        foreach (var offer in data.EnumerateArray())
+        foreach (var offer in offers.EnumerateArray())
         {
-            var priceElement = offer.GetProperty("price");
-            if (!decimal.TryParse(priceElement.GetProperty("grandTotal").GetString(), out var price))
-            {
-                continue;
-            }
-
-            var currency = priceElement.GetProperty("currency").GetString() ?? query.Currency;
-            var itineraries = offer.GetProperty("itineraries").EnumerateArray().ToList();
-            if (itineraries.Count == 0)
-            {
-                continue;
-            }
-
-            var firstItinerary = itineraries[0];
-            var segments = firstItinerary.ValueKind == JsonValueKind.Object && firstItinerary.TryGetProperty("segments", out var segmentElement)
-                ? segmentElement.EnumerateArray().ToList()
-                : [];
-            var firstSegment = segments.FirstOrDefault();
-            var airline = firstSegment.ValueKind == JsonValueKind.Object && firstSegment.TryGetProperty("carrierCode", out var carrier) ? carrier.GetString() ?? "Airline" : "Airline";
-            var flightNumber = firstSegment.ValueKind == JsonValueKind.Object && firstSegment.TryGetProperty("number", out var number) ? $"{airline}{number.GetString()}" : airline;
-            var stops = Math.Max(0, segments.Count - 1);
-            var duration = firstItinerary.TryGetProperty("duration", out var durationElement)
-                ? ParseIsoDuration(durationElement.GetString())
-                : TimeSpan.Zero;
-
-            yield return new FlightOffer(
-                "Amadeus",
-                airline,
-                flightNumber,
-                origin,
-                destination,
-                query.DepartFrom,
-                query.ReturnFrom,
-                price,
-                currency,
-                stops,
-                duration,
-                "https://www.amadeus.com/en");
+            yield return offer;
         }
     }
 
-    private static TimeSpan ParseIsoDuration(string? value)
+    private static int SerpApiStops(FlightSearchQuery query)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (query.DirectOnly || query.MaxStops == 0)
         {
-            return TimeSpan.Zero;
+            return 1;
         }
 
-        try
+        return query.MaxStops switch
         {
-            return XmlConvert.ToTimeSpan(value);
-        }
-        catch
-        {
-            return TimeSpan.Zero;
-        }
+            1 => 2,
+            2 => 3,
+            _ => 0
+        };
     }
 
-    private static string GetAmadeusBaseUrl(FlightProviderOptions options)
+    private static string SerpApiTravelClass(CabinClass cabin)
     {
-        return options.AmadeusEnvironment.Equals("Production", StringComparison.OrdinalIgnoreCase)
-            ? "https://api.amadeus.com"
-            : "https://test.api.amadeus.com";
+        return cabin switch
+        {
+            CabinClass.PremiumEconomy => "2",
+            CabinClass.Business => "3",
+            CabinClass.First => "4",
+            _ => "1"
+        };
+    }
+
+    private static string NormalizeTwoLetterCode(string value, string fallback)
+    {
+        var normalized = new string((value ?? "").Trim().Where(char.IsLetter).Take(2).Select(char.ToLowerInvariant).ToArray());
+        return normalized.Length == 2 ? normalized : fallback;
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName)
+    {
+        return element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String
+                ? property.GetString()
+                : null;
+    }
+
+    private static string? ReadAirportId(JsonElement flight, string propertyName)
+    {
+        return flight.ValueKind == JsonValueKind.Object &&
+            flight.TryGetProperty(propertyName, out var airport) &&
+            airport.ValueKind == JsonValueKind.Object
+                ? ReadString(airport, "id")
+                : null;
+    }
+
+    private static DateOnly? ReadAirportDate(JsonElement flight, string propertyName)
+    {
+        if (flight.ValueKind != JsonValueKind.Object ||
+            !flight.TryGetProperty(propertyName, out var airport) ||
+            airport.ValueKind != JsonValueKind.Object ||
+            ReadString(airport, "time") is not { } timeText)
+        {
+            return null;
+        }
+
+        return DateTime.TryParse(timeText, out var parsed)
+            ? DateOnly.FromDateTime(parsed)
+            : null;
+    }
+
+    private static bool TryGetDecimal(JsonElement element, string propertyName, out decimal value)
+    {
+        value = 0;
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.Number => property.TryGetDecimal(out value),
+            JsonValueKind.String => decimal.TryParse(property.GetString(), out value),
+            _ => false
+        };
+    }
+
+    private static bool TryGetInt(JsonElement element, string propertyName, out int value)
+    {
+        value = 0;
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.Number => property.TryGetInt32(out value),
+            JsonValueKind.String => int.TryParse(property.GetString(), out value),
+            _ => false
+        };
     }
 
     private static IEnumerable<FlightOffer> GenerateDemoOffers(FlightSearchQuery query)

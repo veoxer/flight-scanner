@@ -43,6 +43,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .Property(alert => alert.TargetPrice)
             .HasPrecision(10, 2);
 
+        builder.Entity<PriceAlert>()
+            .Property(alert => alert.MaxTargetPrice)
+            .HasPrecision(10, 2);
+
+        builder.Entity<PriceAlert>()
+            .Property(alert => alert.MinTargetPrice)
+            .HasPrecision(10, 2);
+
         builder.Entity<FlightScanResult>()
             .HasOne(result => result.PriceAlert)
             .WithMany(alert => alert.ScanResults)

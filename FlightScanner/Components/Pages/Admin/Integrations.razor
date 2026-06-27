@@ -20,24 +20,28 @@
 
         <label class="form-label">@UiText.T("Provider")</label>
         <InputSelect class="form-select" @bind-Value="Input.ProviderType">
-            <option value="Amadeus">Amadeus Flight Offers</option>
+            <option value="SerpApi">SerpApi Google Flights</option>
             <option value="Custom">Custom HTTP API</option>
         </InputSelect>
 
         <div class="settings-grid mt-3">
             <section>
-                <h2>Amadeus</h2>
-                <label class="form-label">@UiText.T("Environment")</label>
-                <InputSelect class="form-select" @bind-Value="Input.AmadeusEnvironment">
-                    <option value="Test">@UiText.T("TestCachedData")</option>
-                    <option value="Production">@UiText.T("ProductionRealtimeData")</option>
-                </InputSelect>
-                <label class="form-label mt-3">@UiText.T("ApiKey")</label>
-                <InputText class="form-control" @bind-Value="Input.AmadeusClientId" />
-                <label class="form-label mt-3">@UiText.T("ApiSecret")</label>
-                <InputText class="form-control" type="password" @bind-Value="Input.AmadeusClientSecret" />
+                <h2>SerpApi Google Flights</h2>
+                <label class="form-label">@UiText.T("ApiKey")</label>
+                <InputText class="form-control" type="password" @bind-Value="Input.SerpApiApiKey" />
+                <label class="form-label mt-3">@UiText.T("GoogleCountry")</label>
+                <InputText class="form-control" maxlength="2" @bind-Value="Input.SerpApiGoogleCountry" />
+                <label class="form-label mt-3">@UiText.T("Language")</label>
+                <InputText class="form-control" maxlength="2" @bind-Value="Input.SerpApiLanguage" />
                 <label class="form-label mt-3">@UiText.T("MaxOffers")</label>
-                <InputNumber class="form-control" @bind-Value="Input.AmadeusMaxOffers" />
+                <InputNumber class="form-control" @bind-Value="Input.SerpApiMaxOffers" />
+                <label class="form-label mt-3">@UiText.T("MaxRoutePairs")</label>
+                <InputNumber class="form-control" @bind-Value="Input.SerpApiMaxRoutePairs" />
+                <div class="form-check mt-3">
+                    <InputCheckbox class="form-check-input" @bind-Value="Input.SerpApiDeepSearch" />
+                    <label class="form-check-label">@UiText.T("DeepSearch")</label>
+                </div>
+                <p class="settings-note mt-3">@UiText.T("SerpApiSearchNote")</p>
             </section>
 
             <section>
@@ -102,7 +106,7 @@
     public sealed class FlightProviderForm
     {
         public bool Enabled { get; set; }
-        public string ProviderType { get; set; } = "Amadeus";
+        public string ProviderType { get; set; } = "SerpApi";
         public string EndpointUrl { get; set; } = "";
         public string HttpMethod { get; set; } = "POST";
         public string HeadersJson { get; set; } = "{}";
@@ -110,15 +114,17 @@
         public string PriceJsonPath { get; set; } = "$.offers[0].price";
         public string CurrencyJsonPath { get; set; } = "$.offers[0].currency";
         public string UrlJsonPath { get; set; } = "$.offers[0].url";
-        public string AmadeusEnvironment { get; set; } = "Test";
-        public string AmadeusClientId { get; set; } = "";
-        public string AmadeusClientSecret { get; set; } = "";
-        public int AmadeusMaxOffers { get; set; } = 20;
+        public string SerpApiApiKey { get; set; } = "";
+        public string SerpApiGoogleCountry { get; set; } = "ma";
+        public string SerpApiLanguage { get; set; } = "en";
+        public int SerpApiMaxOffers { get; set; } = 20;
+        public int SerpApiMaxRoutePairs { get; set; } = 1;
+        public bool SerpApiDeepSearch { get; set; }
 
         public static FlightProviderForm FromOptions(FlightProviderOptions options, bool enabled) => new()
         {
             Enabled = enabled,
-            ProviderType = options.ProviderType,
+            ProviderType = options.ProviderType.Equals("Amadeus", StringComparison.OrdinalIgnoreCase) ? "SerpApi" : options.ProviderType,
             EndpointUrl = options.EndpointUrl,
             HttpMethod = options.HttpMethod,
             HeadersJson = options.HeadersJson,
@@ -126,10 +132,12 @@
             PriceJsonPath = options.PriceJsonPath,
             CurrencyJsonPath = options.CurrencyJsonPath,
             UrlJsonPath = options.UrlJsonPath,
-            AmadeusEnvironment = options.AmadeusEnvironment,
-            AmadeusClientId = options.AmadeusClientId,
-            AmadeusClientSecret = options.AmadeusClientSecret,
-            AmadeusMaxOffers = options.AmadeusMaxOffers
+            SerpApiApiKey = options.SerpApiApiKey,
+            SerpApiGoogleCountry = options.SerpApiGoogleCountry,
+            SerpApiLanguage = options.SerpApiLanguage,
+            SerpApiMaxOffers = options.SerpApiMaxOffers,
+            SerpApiMaxRoutePairs = options.SerpApiMaxRoutePairs,
+            SerpApiDeepSearch = options.SerpApiDeepSearch
         };
 
         public FlightProviderOptions ToOptions() => new()
@@ -142,10 +150,12 @@
             PriceJsonPath = PriceJsonPath,
             CurrencyJsonPath = CurrencyJsonPath,
             UrlJsonPath = UrlJsonPath,
-            AmadeusEnvironment = AmadeusEnvironment,
-            AmadeusClientId = AmadeusClientId,
-            AmadeusClientSecret = AmadeusClientSecret,
-            AmadeusMaxOffers = Math.Clamp(AmadeusMaxOffers, 1, 50)
+            SerpApiApiKey = SerpApiApiKey,
+            SerpApiGoogleCountry = SerpApiGoogleCountry,
+            SerpApiLanguage = SerpApiLanguage,
+            SerpApiMaxOffers = Math.Clamp(SerpApiMaxOffers, 1, 50),
+            SerpApiMaxRoutePairs = Math.Clamp(SerpApiMaxRoutePairs, 1, 12),
+            SerpApiDeepSearch = SerpApiDeepSearch
         };
     }
 }

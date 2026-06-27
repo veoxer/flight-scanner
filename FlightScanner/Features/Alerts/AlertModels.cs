@@ -31,6 +31,8 @@ public sealed class PriceAlert
     [MaxLength(8)]
     public string TargetMode { get; set; } = "Max";
     public decimal TargetPrice { get; set; }
+    public decimal? MaxTargetPrice { get; set; }
+    public decimal? MinTargetPrice { get; set; }
     public bool NotifyByPush { get; set; } = true;
     public bool NotifyByEmail { get; set; } = true;
     public bool NotifyByWhatsApp { get; set; }

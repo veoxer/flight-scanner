@@ -65,14 +65,8 @@
     function enforceDatePair(depart, ret, changedField) {
         var departDate = parseDisplayDate(depart.value);
         var returnDate = parseDisplayDate(ret.value);
-        var min = todayDate();
 
         if (changedField === depart && departDate) {
-            if (departDate < min) {
-                depart.value = "";
-                return;
-            }
-
             depart.value = formatDisplayDate(departDate);
             if (returnDate && departDate > returnDate) {
                 ret.value = formatDisplayDate(departDate);
@@ -81,11 +75,6 @@
         }
 
         if (changedField === ret && returnDate) {
-            if (returnDate < min) {
-                ret.value = "";
-                return;
-            }
-
             ret.value = formatDisplayDate(returnDate);
             if (departDate && returnDate < departDate) {
                 depart.value = formatDisplayDate(returnDate);
@@ -148,6 +137,9 @@
             button.textContent = String(day);
             if (selected && date.getTime() === selected.getTime()) {
                 button.classList.add("selected");
+            }
+            if (date < today) {
+                button.classList.add("past");
             }
             if (date.getTime() === today.getTime()) {
                 button.classList.add("today");
@@ -325,6 +317,98 @@
         });
     }
 
+    function bindAlertTargets(root) {
+        var stack = root.querySelector("[data-alert-targets]");
+        if (!stack || stack.dataset.boundTargets === "true") {
+            return;
+        }
+
+        stack.dataset.boundTargets = "true";
+        var addButton = stack.querySelector("[data-target-add]");
+        var filters = Array.prototype.slice.call(stack.querySelectorAll("[data-target-filter]"));
+
+        function visibleFilters() {
+            return filters.filter(function (filter) {
+                return !filter.hidden;
+            });
+        }
+
+        function syncOptions() {
+            var visible = visibleFilters();
+            var selected = visible.map(function (filter) {
+                return filter.querySelector("select").value;
+            });
+
+            visible.forEach(function (filter) {
+                var select = filter.querySelector("select");
+                Array.prototype.forEach.call(select.options, function (option) {
+                    option.disabled = option.value !== select.value && selected.indexOf(option.value) >= 0;
+                });
+            });
+
+            filters.forEach(function (filter) {
+                var remove = filter.querySelector("[data-target-remove]");
+                if (remove) {
+                    remove.hidden = visible.length <= 1 || filter.hidden;
+                }
+            });
+
+            if (addButton) {
+                addButton.hidden = visible.length >= filters.length;
+            }
+        }
+
+        function activateFilter(filter) {
+            filter.hidden = false;
+            var select = filter.querySelector("select");
+            var used = visibleFilters().map(function (item) {
+                return item === filter ? "" : item.querySelector("select").value;
+            });
+            Array.prototype.some.call(select.options, function (option) {
+                if (used.indexOf(option.value) < 0) {
+                    select.value = option.value;
+                    return true;
+                }
+
+                return false;
+            });
+            filter.querySelector("input").focus();
+            syncOptions();
+        }
+
+        if (addButton) {
+            addButton.addEventListener("click", function () {
+                var hidden = filters.find(function (filter) {
+                    return filter.hidden;
+                });
+                if (hidden) {
+                    activateFilter(hidden);
+                }
+            });
+        }
+
+        filters.forEach(function (filter) {
+            var select = filter.querySelector("select");
+            var input = filter.querySelector("input");
+            var remove = filter.querySelector("[data-target-remove]");
+
+            select.addEventListener("change", syncOptions);
+            if (remove) {
+                remove.addEventListener("click", function () {
+                    if (visibleFilters().length <= 1) {
+                        return;
+                    }
+
+                    input.value = "";
+                    filter.hidden = true;
+                    syncOptions();
+                });
+            }
+        });
+
+        syncOptions();
+    }
+
     function createOption(item, input, typeInput, menu) {
         var button = document.createElement("button");
         button.type = "button";
@@ -486,6 +570,7 @@
         bindLocationAutocomplete(root);
         bindTravellerPanel(root);
         bindCurrencyCombobox(root);
+        bindAlertTargets(root);
     }
 
     document.addEventListener("DOMContentLoaded", bindSearchForm);

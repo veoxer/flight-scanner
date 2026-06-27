@@ -10,7 +10,7 @@ Self-hosted ASP.NET Core/Blazor PWA for searching demo/custom flight fares and c
 - Price alerts with a background scanner.
 - Notification pipeline for browser push subscription records, SMTP email, and a configurable WhatsApp HTTP API.
 - Admin reminder settings for delivery channels, SMTP, WhatsApp, and Web Push VAPID keys.
-- Admin integration settings for Amadeus Flight Offers or a custom flight provider API.
+- Admin integration settings for SerpApi Google Flights or a custom flight provider API.
 - PWA manifest and service worker.
 - PostgreSQL storage configured from environment variables.
 
@@ -37,7 +37,7 @@ POSTGRES_SSL_MODE=Disable
 
 All deployment-sensitive values should be supplied through environment variables or Portainer secrets/env management. Do not commit `.env`.
 
-Email, WhatsApp, mobile notification settings, and Amadeus credentials are configured in the app after setup from the admin pages.
+Email, WhatsApp, mobile notification settings, and the SerpApi key are configured in the app after setup from the admin pages.
 
 ## Run Locally
 
@@ -73,9 +73,9 @@ AllowedHosts=flight.veoxer.com;192.168.11.120;localhost
 
 ## Flight Data
 
-The app ships with Amadeus Flight Offers support and a deterministic local estimate engine. Create an Amadeus for Developers app, then enter the API Key and API Secret under `Admin > Flight API`.
+The app ships with SerpApi Google Flights support and a deterministic local estimate engine. Create a SerpApi account, then enter the API key under `Admin > Flight API`.
 
-Amadeus test mode uses free cached test data. Production mode is for real-time data and may require production approval or billing depending on your usage.
+SerpApi free plans have a monthly search quota. Keep `Max route pairs per search` low for country or continent searches because each route pair can make a separate Google Flights request. SerpApi cached searches can be free when the exact query is served from their cache.
 
 You can also switch the provider to a custom free, self-hosted, or personally available HTTP provider from `Admin > Flight API`.
 

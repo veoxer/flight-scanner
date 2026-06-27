@@ -132,14 +132,26 @@
                 <label for="checkedBags">@T("CheckedBags")</label>
                 <input id="checkedBags" name="checkedBags" class="form-control" type="number" min="0" max="9" value="@CheckedBags" />
             </div>
-            <div class="filter-inline">
-                <label for="targetPrice">@T("AlertTarget")</label>
-                <div class="target-control">
-                    <select name="targetMode" class="form-select" aria-label="@T("AlertTargetMode")">
-                        <option value="Max" selected="@(TargetMode == "Max")">@T("MaxFare")</option>
-                        <option value="Min" selected="@(TargetMode == "Min")">@T("MinFare")</option>
-                    </select>
-                    <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" />
+            <div class="filter-inline alert-target-filter">
+                <label>@T("AlertTarget")</label>
+                <div class="target-filter-stack" data-alert-targets>
+                    <div class="target-control" data-target-filter>
+                        <select name="targetMode" class="form-select" aria-label="@T("AlertTargetMode")">
+                            <option value="Max" selected="@(TargetMode == "Max")">@T("MaxFare")</option>
+                            <option value="Min" selected="@(TargetMode == "Min")">@T("MinFare")</option>
+                        </select>
+                        <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" />
+                        <button type="button" class="target-remove-button" data-target-remove aria-label="@T("RemoveFareFilter")">×</button>
+                    </div>
+                    <div class="target-control" data-target-filter hidden="@(!ShowSecondTargetFilter)">
+                        <select name="targetMode2" class="form-select" aria-label="@T("AlertTargetMode")">
+                            <option value="Max" selected="@(TargetMode2 == "Max")">@T("MaxFare")</option>
+                            <option value="Min" selected="@(TargetMode2 == "Min")">@T("MinFare")</option>
+                        </select>
+                        <input name="targetPrice2" class="form-control" type="number" min="1" step="1" value="@TargetPrice2" />
+                        <button type="button" class="target-remove-button" data-target-remove aria-label="@T("RemoveFareFilter")">×</button>
+                    </div>
+                    <button type="button" class="target-add-button" data-target-add>@T("AddFareFilter")</button>
                 </div>
             </div>
             <button type="submit" name="saveAlert" value="true" class="btn btn-outline-light save-alert-button">@T("SaveAlert")</button>
@@ -274,6 +286,12 @@
     [Parameter, SupplyParameterFromQuery(Name = "targetPrice")]
     public string? TargetPrice { get; set; }
 
+    [Parameter, SupplyParameterFromQuery(Name = "targetMode2")]
+    public string TargetMode2 { get; set; } = "Min";
+
+    [Parameter, SupplyParameterFromQuery(Name = "targetPrice2")]
+    public string? TargetPrice2 { get; set; }
+
     private static readonly IReadOnlyList<CurrencyOption> Currencies =
     [
         new("MAD", "د.م.", "Moroccan Dirham"),
@@ -304,6 +322,7 @@
     private string? message;
     private CabinClass Cabin => Enum.TryParse<CabinClass>(CabinQuery, ignoreCase: true, out var cabin) ? cabin : CabinClass.Economy;
     private string TravellerSummary => $"{Adults + Children} {(Adults + Children == 1 ? T("Traveller") : T("Travellers"))}, {CabinLabel(Cabin)}";
+    private bool ShowSecondTargetFilter => !string.IsNullOrWhiteSpace(TargetPrice2);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -348,6 +367,11 @@
             return;
         }
 
+        if (!TryParseTargetFilters(out var maxTargetPrice, out var minTargetPrice, out message))
+        {
+            return;
+        }
+
         await using var db = await DbFactory.CreateDbContextAsync();
         db.PriceAlerts.Add(new PriceAlert
         {
@@ -368,8 +392,10 @@
             MaxStops = query.MaxStops,
             CheckedBags = query.CheckedBags,
             Currency = query.Currency,
-            TargetMode = NormalizeTargetMode(TargetMode),
-            TargetPrice = ParseTargetPrice()
+            TargetMode = BuildLegacyTargetMode(maxTargetPrice, minTargetPrice),
+            TargetPrice = BuildLegacyTargetPrice(maxTargetPrice, minTargetPrice),
+            MaxTargetPrice = maxTargetPrice,
+            MinTargetPrice = minTargetPrice
         });
         await db.SaveChangesAsync();
         message = T("AlertSaved");
@@ -398,36 +424,20 @@
             returnDate = parsedReturnDate;
         }
 
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        if (departDate < today)
-        {
-            validationMessage = T("DepartDatePast");
-            return false;
-        }
-
-        if (returnDate is not null && returnDate.Value < today)
-        {
-            validationMessage = T("ReturnDatePast");
-            return false;
-        }
-
         if (returnDate is not null && returnDate.Value < departDate)
         {
             departDate = returnDate.Value;
             returnDate = null;
         }
 
-        if (SaveAlert && (string.IsNullOrWhiteSpace(TargetPrice) ||
-            !decimal.TryParse(TargetPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var targetPrice) ||
-            targetPrice <= 0))
+        if (SaveAlert && !TryParseTargetFilters(out _, out _, out validationMessage))
         {
-            validationMessage = T("AlertTargetRequired");
             return false;
         }
 
         var originType = ParseLocationType(OriginType, Origin);
         var destinationType = ParseLocationType(DestinationType, Destination);
-        var currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.Trim().ToUpperInvariant();
+        var currency = string.IsNullOrWhiteSpace(Currency) ? "MAD" : Currency.Trim().ToUpperInvariant();
 
         query = new FlightSearchQuery(
             originType,
@@ -457,6 +467,7 @@
         ReturnDate = query.ReturnFrom?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "";
         Currency = query.Currency;
         TargetMode = NormalizeTargetMode(TargetMode);
+        TargetMode2 = NormalizeTargetMode(TargetMode2);
     }
 
     private LocationType ParseLocationType(string value, string locationValue)
@@ -516,11 +527,52 @@
         return duration <= TimeSpan.Zero ? T("DurationUnavailable") : $"{(int)duration.TotalHours} h {duration.Minutes} m";
     }
 
-    private decimal ParseTargetPrice()
+    private bool TryParseTargetFilters(out decimal? maxTargetPrice, out decimal? minTargetPrice, out string? validationMessage)
     {
-        return decimal.TryParse(TargetPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var value) && value > 0
-            ? value
-            : 0;
+        maxTargetPrice = null;
+        minTargetPrice = null;
+        validationMessage = null;
+
+        foreach (var (mode, priceText) in new[] { (TargetMode, TargetPrice), (TargetMode2, TargetPrice2) })
+        {
+            if (string.IsNullOrWhiteSpace(priceText))
+            {
+                continue;
+            }
+
+            if (!decimal.TryParse(priceText, NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price <= 0)
+            {
+                validationMessage = T("AlertTargetRequired");
+                return false;
+            }
+
+            if (NormalizeTargetMode(mode) == "Min")
+            {
+                minTargetPrice = price;
+            }
+            else
+            {
+                maxTargetPrice = price;
+            }
+        }
+
+        if (maxTargetPrice is null && minTargetPrice is null)
+        {
+            validationMessage = T("AlertTargetRequired");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string BuildLegacyTargetMode(decimal? maxTargetPrice, decimal? minTargetPrice)
+    {
+        return maxTargetPrice is null && minTargetPrice is not null ? "Min" : "Max";
+    }
+
+    private static decimal BuildLegacyTargetPrice(decimal? maxTargetPrice, decimal? minTargetPrice)
+    {
+        return maxTargetPrice ?? minTargetPrice ?? 0;
     }
 
     private static string NormalizeTargetMode(string? mode)

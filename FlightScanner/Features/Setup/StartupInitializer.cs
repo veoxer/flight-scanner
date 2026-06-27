@@ -75,6 +75,24 @@ public sealed class StartupInitializer(
             """
             ALTER TABLE "PriceAlerts"
             ADD COLUMN IF NOT EXISTS "TargetMode" character varying(8) NOT NULL DEFAULT 'Max';
+
+            ALTER TABLE "PriceAlerts"
+            ADD COLUMN IF NOT EXISTS "MaxTargetPrice" numeric(10,2);
+
+            ALTER TABLE "PriceAlerts"
+            ADD COLUMN IF NOT EXISTS "MinTargetPrice" numeric(10,2);
+
+            UPDATE "PriceAlerts"
+            SET "MaxTargetPrice" = "TargetPrice"
+            WHERE "MaxTargetPrice" IS NULL
+                AND COALESCE("TargetMode", 'Max') <> 'Min'
+                AND "TargetPrice" > 0;
+
+            UPDATE "PriceAlerts"
+            SET "MinTargetPrice" = "TargetPrice"
+            WHERE "MinTargetPrice" IS NULL
+                AND "TargetMode" = 'Min'
+                AND "TargetPrice" > 0;
             """,
             cancellationToken);
     }
@@ -262,11 +280,13 @@ public sealed class StartupInitializer(
         {
             IntegrationKind.FlightProvider => Serialize(new FlightProviderOptions
             {
-                ProviderType = configuration["FLIGHT_PROVIDER_TYPE"] ?? "Amadeus",
-                AmadeusEnvironment = configuration["AMADEUS_ENVIRONMENT"] ?? "Test",
-                AmadeusClientId = configuration["AMADEUS_CLIENT_ID"] ?? "",
-                AmadeusClientSecret = configuration["AMADEUS_CLIENT_SECRET"] ?? "",
-                AmadeusMaxOffers = int.TryParse(configuration["AMADEUS_MAX_OFFERS"], out var maxOffers) ? maxOffers : 20,
+                ProviderType = configuration["FLIGHT_PROVIDER_TYPE"] ?? "SerpApi",
+                SerpApiApiKey = configuration["SERPAPI_API_KEY"] ?? "",
+                SerpApiGoogleCountry = configuration["SERPAPI_GOOGLE_COUNTRY"] ?? "ma",
+                SerpApiLanguage = configuration["SERPAPI_LANGUAGE"] ?? "en",
+                SerpApiMaxOffers = int.TryParse(configuration["SERPAPI_MAX_OFFERS"], out var maxOffers) ? maxOffers : 20,
+                SerpApiMaxRoutePairs = int.TryParse(configuration["SERPAPI_MAX_ROUTE_PAIRS"], out var maxRoutePairs) ? maxRoutePairs : 1,
+                SerpApiDeepSearch = bool.TryParse(configuration["SERPAPI_DEEP_SEARCH"], out var deepSearch) && deepSearch,
                 EndpointUrl = configuration["FLIGHT_PROVIDER_URL"] ?? "",
                 HttpMethod = configuration["FLIGHT_PROVIDER_HTTP_METHOD"] ?? "POST",
                 HeadersJson = configuration["FLIGHT_PROVIDER_HEADERS_JSON"] ?? "{}",
