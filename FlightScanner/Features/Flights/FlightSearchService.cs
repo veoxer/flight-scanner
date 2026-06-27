@@ -272,7 +272,7 @@ public sealed class FlightSearchService(
         var matches = await db.FlightLocations.AsNoTracking()
             .Where(location =>
                 location.Type == type &&
-                (location.Code.ToLower() == trimmed.ToLower() || location.Name.ToLower().Contains(trimmed.ToLower())))
+                location.Code.ToLower() == trimmed.ToLower())
             .ToListAsync(cancellationToken);
 
         if (type is LocationType.Airport)

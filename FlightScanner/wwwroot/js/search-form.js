@@ -776,6 +776,39 @@
         bindFlightResultDetails();
     }
 
-    document.addEventListener("DOMContentLoaded", bindSearchForm);
-    document.addEventListener("enhancedload", bindSearchForm);
+    function scheduleSearchFormBinding() {
+        bindSearchForm();
+
+        var attempts = 0;
+        var retry = window.setInterval(function () {
+            attempts++;
+            bindSearchForm();
+
+            var depart = document.querySelector("[data-flight-date='depart']");
+            if (attempts >= 30 || (depart && depart.dataset.boundFlightDates === "true")) {
+                window.clearInterval(retry);
+            }
+        }, 150);
+    }
+
+    window.flightScannerBindSearchForm = scheduleSearchFormBinding;
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", scheduleSearchFormBinding);
+    } else {
+        scheduleSearchFormBinding();
+    }
+
+    window.addEventListener("load", scheduleSearchFormBinding);
+    window.addEventListener("pageshow", scheduleSearchFormBinding);
+    document.addEventListener("enhancedload", scheduleSearchFormBinding);
+
+    if (document.body && "MutationObserver" in window) {
+        var observerTimeout = null;
+        var observer = new MutationObserver(function () {
+            window.clearTimeout(observerTimeout);
+            observerTimeout = window.setTimeout(bindSearchForm, 50);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
 })();
