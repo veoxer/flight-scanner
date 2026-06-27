@@ -140,6 +140,7 @@
             }
             if (date < today) {
                 button.classList.add("past");
+                button.disabled = true;
             }
             if (date.getTime() === today.getTime()) {
                 button.classList.add("today");

@@ -16,23 +16,21 @@
     <h2>@UiText.T("FlightProviderApi")</h2>
     <p class="settings-note">@UiText.T("FlightProviderText")</p>
 
-    <form method="post" action="/admin/integrations">
-        <AntiforgeryToken />
+    <EditForm Model="Input" OnValidSubmit="SaveAsync" FormName="flight-provider-settings">
         <div class="form-check mb-3">
-            <input id="serpapi-enabled" class="form-check-input" type="checkbox" name="enabled" value="true" checked="@enabled" />
+            <InputCheckbox id="serpapi-enabled" class="form-check-input" @bind-Value="Input.Enabled" />
             <label class="form-check-label" for="serpapi-enabled">@UiText.T("Enabled")</label>
         </div>
 
         <label class="form-label" for="serpapi-key">@UiText.T("ApiKey")</label>
-        <input id="serpapi-key" name="apiKey" class="form-control" type="password" value="@apiKey" autocomplete="off" />
+        <InputText id="serpapi-key" class="form-control" type="password" @bind-Value="Input.ApiKey" autocomplete="off" />
 
         <button type="submit" class="btn btn-primary mt-3">@UiText.T("Save")</button>
-    </form>
+    </EditForm>
 </section>
 
 @code {
-    private bool enabled;
-    private string apiKey = "";
+    private IntegrationForm Input { get; set; } = new();
     private bool saved;
 
     [Parameter, SupplyParameterFromQuery(Name = "saved")]
@@ -52,7 +50,37 @@
         var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(
             setting.SettingsJson,
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
-        enabled = setting.Enabled;
-        apiKey = options.SerpApiApiKey;
+        Input = new IntegrationForm
+        {
+            Enabled = setting.Enabled,
+            ApiKey = options.SerpApiApiKey
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
+        if (setting is null)
+        {
+            setting = new IntegrationSetting { Kind = IntegrationKind.FlightProvider };
+            db.IntegrationSettings.Add(setting);
+        }
+
+        setting.Enabled = Input.Enabled;
+        setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(new FlightProviderOptions
+        {
+            ProviderType = "SerpApi",
+            SerpApiApiKey = Input.ApiKey.Trim()
+        }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        setting.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        saved = true;
+    }
+
+    private sealed class IntegrationForm
+    {
+        public bool Enabled { get; set; }
+        public string ApiKey { get; set; } = "";
     }
 }

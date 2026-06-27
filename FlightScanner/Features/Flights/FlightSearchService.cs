@@ -70,13 +70,7 @@ public sealed class FlightSearchService(
 
     public async Task<IReadOnlyList<FlightOffer>> SearchAsync(FlightSearchQuery query, CancellationToken cancellationToken = default)
     {
-        var customOffers = await TrySearchCustomProviderAsync(query, cancellationToken);
-        if (customOffers.Count > 0)
-        {
-            return customOffers;
-        }
-
-        return GenerateDemoOffers(query).ToList();
+        return await TrySearchConfiguredProviderAsync(query, cancellationToken);
     }
 
     public IReadOnlyList<AirlineSearchLink> GetAirlineSearchLinks(FlightSearchQuery query)
@@ -95,7 +89,7 @@ public sealed class FlightSearchService(
             .ToList();
     }
 
-    private async Task<IReadOnlyList<FlightOffer>> TrySearchCustomProviderAsync(FlightSearchQuery query, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<FlightOffer>> TrySearchConfiguredProviderAsync(FlightSearchQuery query, CancellationToken cancellationToken)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var setting = await db.IntegrationSettings.AsNoTracking()
@@ -498,43 +492,6 @@ public sealed class FlightSearchService(
             JsonValueKind.String => int.TryParse(property.GetString(), out value),
             _ => false
         };
-    }
-
-    private static IEnumerable<FlightOffer> GenerateDemoOffers(FlightSearchQuery query)
-    {
-        var seed = HashCode.Combine(query.Origin.ToUpperInvariant(), query.Destination.ToUpperInvariant(), query.DepartFrom, query.Adults, query.Cabin);
-        var random = new Random(seed);
-        var airlines = new[] { "Atlas", "Northline", "EuroJet", "Pacific Air", "Nomad" };
-
-        for (var i = 0; i < 8; i++)
-        {
-            var stops = query.DirectOnly ? 0 : random.Next(0, Math.Min(query.MaxStops ?? 2, 2) + 1);
-            var cabinMultiplier = query.Cabin switch
-            {
-                CabinClass.PremiumEconomy => 1.35m,
-                CabinClass.Business => 2.4m,
-                CabinClass.First => 3.8m,
-                _ => 1m
-            };
-            var passengerMultiplier = query.Adults + (query.Children * 0.75m) + (query.Infants * 0.1m);
-            var departDate = query.DepartFrom.AddDays(random.Next(Math.Max(1, query.DepartTo.DayNumber - query.DepartFrom.DayNumber + 1)));
-            var basePrice = random.Next(110, 880) + stops * 45 + query.CheckedBags * 35;
-            var price = decimal.Round(basePrice * cabinMultiplier * passengerMultiplier, 2);
-
-            yield return new FlightOffer(
-                "Demo fare engine",
-                airlines[i % airlines.Length],
-                $"{airlines[i % airlines.Length][0]}{random.Next(100, 999)}",
-                query.Origin,
-                query.Destination,
-                departDate,
-                query.ReturnFrom,
-                price,
-                query.Currency,
-                stops,
-                TimeSpan.FromMinutes(random.Next(120, 980)),
-                "#");
-        }
     }
 
     private static string RenderTemplate(string template, FlightSearchQuery query)

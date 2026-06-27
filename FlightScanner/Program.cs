@@ -224,39 +224,6 @@ app.MapGet("/api/push/public-key", async (IDbContextFactory<ApplicationDbContext
     return Results.Ok(new { publicKey = options.PublicKey });
 }).RequireAuthorization();
 
-app.MapPost("/admin/integrations", async (
-    HttpContext context,
-    IAntiforgery antiforgery,
-    IDbContextFactory<ApplicationDbContext> dbFactory) =>
-{
-    await antiforgery.ValidateRequestAsync(context);
-    var form = await context.Request.ReadFormAsync();
-    var enabled = form.TryGetValue("enabled", out var enabledValues) &&
-        enabledValues.Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
-    var apiKey = form.TryGetValue("apiKey", out var apiKeyValues)
-        ? apiKeyValues.ToString().Trim()
-        : "";
-
-    await using var db = await dbFactory.CreateDbContextAsync();
-    var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
-    if (setting is null)
-    {
-        setting = new IntegrationSetting { Kind = IntegrationKind.FlightProvider };
-        db.IntegrationSettings.Add(setting);
-    }
-
-    setting.Enabled = enabled;
-    setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(new FlightProviderOptions
-    {
-        ProviderType = "SerpApi",
-        SerpApiApiKey = apiKey
-    }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-    setting.UpdatedAt = DateTimeOffset.UtcNow;
-    await db.SaveChangesAsync();
-
-    return Results.LocalRedirect("/admin/integrations?saved=true");
-}).RequireAuthorization(policy => policy.RequireRole("Admin"));
-
 app.MapPost("/alerts/{id:int}/toggle", async (
     int id,
     ClaimsPrincipal user,
