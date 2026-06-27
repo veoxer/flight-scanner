@@ -350,6 +350,203 @@ h1:focus {
     transform: translateY(-1px);
 }
 
+.result-card.itinerary-result {
+    display: block;
+    overflow: hidden;
+    padding: 0;
+}
+
+.result-card.itinerary-result::before {
+    z-index: 1;
+}
+
+.result-card.itinerary-result[open] {
+    border-color: #8ccfc6;
+    box-shadow: 0 22px 42px rgba(15, 23, 42, 0.1);
+}
+
+.result-summary {
+    align-items: center;
+    cursor: pointer;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1.35fr) minmax(8rem, 0.65fr) minmax(9rem, 0.7fr) minmax(9rem, 0.75fr) auto;
+    list-style: none;
+    padding: 1rem 1.1rem;
+}
+
+.result-summary::-webkit-details-marker {
+    display: none;
+}
+
+.result-summary strong,
+.result-summary span {
+    display: block;
+}
+
+.expand-chevron {
+    align-items: center;
+    background: #eef8f6;
+    border: 1px solid #bfe4de;
+    border-radius: 999px;
+    color: var(--teal-dark) !important;
+    display: inline-flex !important;
+    font-size: 1.1rem !important;
+    font-weight: 900;
+    height: 2rem;
+    justify-content: center;
+    transition: transform 0.16s ease;
+    width: 2rem;
+}
+
+.itinerary-result[open] .expand-chevron {
+    transform: rotate(180deg);
+}
+
+.itinerary-details {
+    background:
+        linear-gradient(180deg, rgba(248, 250, 252, 0.72), rgba(255, 255, 255, 0.96));
+    border-top: 1px solid var(--line);
+    display: grid;
+    gap: 1rem;
+    padding: 1rem 1.1rem 1.1rem;
+}
+
+.flight-leg {
+    background: #fff;
+    border: 1px solid #dbe5ee;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.return-leg-shell {
+    background: #f8fcfb;
+    border-style: dashed;
+}
+
+.flight-leg-heading {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    margin-bottom: 0.9rem;
+}
+
+.flight-leg-heading strong,
+.flight-leg-heading span {
+    display: block;
+}
+
+.flight-leg-heading span {
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.flight-timeline {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.flight-segment {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+}
+
+.timeline-rail {
+    align-items: center;
+    display: grid;
+    grid-template-rows: 0.6rem minmax(2.6rem, 1fr) 0.6rem;
+    justify-items: center;
+    min-height: 5.2rem;
+}
+
+.timeline-rail span {
+    border: 2px solid #64748b;
+    border-radius: 999px;
+    height: 0.72rem;
+    width: 0.72rem;
+}
+
+.timeline-rail i {
+    background: repeating-linear-gradient(180deg, #94a3b8 0 4px, transparent 4px 8px);
+    display: block;
+    height: 100%;
+    width: 2px;
+}
+
+.segment-main {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.segment-airports {
+    align-items: baseline;
+    display: grid;
+    gap: 0.25rem 0.75rem;
+    grid-template-columns: 5.2rem minmax(0, 1fr);
+}
+
+.segment-airports strong {
+    color: #0f172a;
+    font-size: 1.02rem;
+}
+
+.segment-airports span {
+    color: #1f2937;
+}
+
+.segment-meta,
+.flight-tags,
+.flight-detail-side {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.segment-meta span,
+.flight-tags span,
+.flight-detail-side span {
+    background: #eef4fb;
+    border: 1px solid #d6e2ee;
+    border-radius: 999px;
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 750;
+    padding: 0.28rem 0.55rem;
+}
+
+.flight-tags span {
+    background: #f5fbfa;
+    border-color: #cde9e4;
+    color: var(--teal-dark);
+}
+
+.layover-row {
+    align-items: center;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    color: #78350f;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.65rem;
+    margin-left: 2.5rem;
+    padding: 0.55rem 0.7rem;
+}
+
+.layover-row span,
+.layover-row strong,
+.layover-row em {
+    color: inherit;
+    display: inline;
+    font-size: 0.86rem;
+}
+
+.itinerary-actions {
+    justify-content: flex-start;
+}
+
 .airline-identity {
     align-items: center;
     display: grid;
@@ -588,6 +785,10 @@ h1:focus {
         grid-template-columns: 1fr;
     }
 
+    .result-summary {
+        grid-template-columns: 1fr;
+    }
+
     .search-command {
         align-items: stretch;
         flex-direction: column;
@@ -650,6 +851,9 @@ h1:focus {
 }
 
 .trip-mode-row {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.35rem;
     margin-bottom: 0.5rem;
 }
 
@@ -663,10 +867,10 @@ h1:focus {
     padding: 0.25rem 0.9rem;
 }
 
-.trip-mode-button::after {
-    content: "⌄";
-    font-size: 0.9rem;
-    margin-left: 0.55rem;
+.trip-mode-button.active {
+    background: #ffffff;
+    border-color: #ffffff;
+    color: var(--teal-dark);
 }
 
 .flight-search-bar {
@@ -856,201 +1060,6 @@ h1:focus {
     font-weight: 900;
     min-height: 4.55rem;
     padding-inline: 1.25rem;
-}
-
-.route-map-panel {
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(20, 184, 166, 0.06)),
-        #082338;
-    border: 1px solid rgba(226, 232, 240, 0.24);
-    border-radius: 8px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 24px 60px rgba(2, 6, 23, 0.22);
-    margin-top: 1rem;
-    overflow: hidden;
-    position: relative;
-}
-
-.route-map-copy {
-    align-items: flex-start;
-    display: flex;
-    gap: 0.45rem;
-    justify-content: space-between;
-    left: 1rem;
-    position: absolute;
-    right: 1rem;
-    top: 0.85rem;
-    z-index: 2;
-}
-
-.route-map-copy span {
-    background: rgba(8, 39, 67, 0.75);
-    border: 1px solid rgba(226, 232, 240, 0.28);
-    border-radius: 999px;
-    color: #c7f9f0;
-    font-size: 0.75rem;
-    font-weight: 900;
-    padding: 0.28rem 0.55rem;
-    text-transform: uppercase;
-}
-
-.route-map-copy strong {
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 999px;
-    color: #082f49;
-    font-size: 0.82rem;
-    max-width: min(30rem, 66vw);
-    overflow: hidden;
-    padding: 0.32rem 0.75rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.route-map {
-    display: block;
-    height: clamp(13rem, 28vw, 20rem);
-    width: 100%;
-}
-
-.route-map-water {
-    fill: url(#routeMapGlow);
-}
-
-.route-map-countries {
-    filter: drop-shadow(0 14px 18px rgba(2, 6, 23, 0.26));
-    opacity: 0.98;
-}
-
-.route-map-current {
-    animation: routeCurrentDrift 9s linear infinite;
-    fill: none;
-    opacity: 0.38;
-    stroke: rgba(191, 237, 229, 0.28);
-    stroke-dasharray: 7 18;
-    stroke-linecap: round;
-    stroke-width: 2;
-}
-
-.route-map-grid {
-    fill: none;
-    opacity: 0.42;
-    stroke: rgba(207, 250, 254, 0.16);
-    stroke-width: 1;
-}
-
-.route-map-route-shadow {
-    fill: none;
-    opacity: 0.42;
-    stroke: rgba(2, 6, 23, 0.72);
-    stroke-linecap: round;
-    stroke-width: 10;
-}
-
-.route-map-route {
-    animation: routeDashFlow 1.9s linear infinite;
-    fill: none;
-    filter: url(#routePinGlow);
-    stroke: url(#routeMapRouteGradient);
-    stroke-dasharray: 13 11;
-    stroke-linecap: round;
-    stroke-width: 5;
-}
-
-#routeMapArrow path {
-    fill: #ff8a4c;
-}
-
-.route-map-pin {
-    filter: url(#routePinGlow);
-    transition: transform 0.22s ease;
-}
-
-.route-map-pin-pulse {
-    animation: routePinPulse 2.2s ease-out infinite;
-    fill: rgba(255, 255, 255, 0.3);
-    stroke: rgba(255, 255, 255, 0.65);
-    stroke-width: 2;
-    transform-box: fill-box;
-    transform-origin: center;
-}
-
-.route-map-pin > circle:nth-child(2) {
-    fill: rgba(255, 255, 255, 0.28);
-}
-
-.route-map-pin path {
-    fill: #f97316;
-    stroke: #fff7ed;
-    stroke-width: 2;
-}
-
-.route-map-pin circle:last-of-type {
-    fill: #fff7ed;
-}
-
-.route-map-pin text {
-    fill: #fff;
-    font-size: 21px;
-    font-weight: 900;
-    paint-order: stroke;
-    stroke: rgba(8, 35, 56, 0.85);
-    stroke-width: 5;
-}
-
-.destination-pin path {
-    fill: #14b8a6;
-    stroke: #ecfeff;
-}
-
-.destination-pin circle:last-of-type {
-    fill: #ecfeff;
-}
-
-.route-map-plane circle {
-    fill: #fff;
-    opacity: 0.96;
-}
-
-.route-map-plane path {
-    fill: #075985;
-}
-
-.route-map-plane {
-    filter: drop-shadow(0 9px 12px rgba(2, 6, 23, 0.28));
-}
-
-@keyframes routeDashFlow {
-    to {
-        stroke-dashoffset: -48;
-    }
-}
-
-@keyframes routeCurrentDrift {
-    to {
-        stroke-dashoffset: -100;
-    }
-}
-
-@keyframes routePinPulse {
-    0% {
-        opacity: 0.72;
-        transform: scale(0.58);
-    }
-    70% {
-        opacity: 0;
-        transform: scale(1.8);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(1.8);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .route-map-route,
-    .route-map-current,
-    .route-map-pin-pulse {
-        animation: none;
-    }
 }
 
 .location-menu,
@@ -1380,23 +1389,6 @@ h1:focus {
         width: min(100%, 24rem);
     }
 
-    .route-map-copy {
-        align-items: stretch;
-        flex-direction: column;
-        left: 0.75rem;
-        right: 0.75rem;
-    }
-
-    .route-map-copy span,
-    .route-map-copy strong {
-        max-width: 100%;
-        width: fit-content;
-    }
-
-    .route-map-copy strong {
-        white-space: normal;
-    }
-
     .filter-inline,
     .filter-inline .currency-control,
     .filter-inline .currency-combobox,
@@ -1429,5 +1421,19 @@ h1:focus {
         align-items: stretch;
         flex-direction: column;
         gap: 0.25rem;
+    }
+
+    .flight-leg-heading,
+    .layover-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .segment-airports {
+        grid-template-columns: 4.6rem minmax(0, 1fr);
+    }
+
+    .layover-row {
+        margin-left: 0;
     }
 }

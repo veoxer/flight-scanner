@@ -204,15 +204,14 @@ app.MapGet("/api/locations/suggest", async (
         {
             value = location.Type == LocationType.Airport ? location.Code : location.Name,
             type = location.Type.ToString(),
+            code = location.Code,
             primary = location.Type == LocationType.Airport ? $"{location.Code} · {location.Name}" : location.Name,
             secondary = location.Type switch
             {
                 LocationType.Continent => UiText.T("Continent"),
                 LocationType.Country => $"{location.Continent} · {UiText.T("Country")}",
                 _ => $"{location.CountryName} · {location.Continent}"
-            },
-            latitude = location.Latitude,
-            longitude = location.Longitude
+            }
         });
 
     return Results.Ok(suggestions);
@@ -224,6 +223,21 @@ app.MapGet("/api/push/public-key", async (IDbContextFactory<ApplicationDbContext
     var setting = await db.IntegrationSettings.AsNoTracking().FirstAsync(item => item.Kind == IntegrationKind.WebPush);
     var options = System.Text.Json.JsonSerializer.Deserialize<WebPushOptions>(setting.SettingsJson, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
     return Results.Ok(new { publicKey = options.PublicKey });
+}).RequireAuthorization();
+
+app.MapGet("/api/flights/return-details", async (
+    string departureToken,
+    string? currency,
+    IFlightSearchService flightSearch,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(departureToken) || departureToken.Length > 4096)
+    {
+        return Results.BadRequest();
+    }
+
+    var offer = await flightSearch.GetReturnFlightAsync(departureToken, currency ?? "MAD", cancellationToken);
+    return offer is null ? Results.NotFound() : Results.Ok(offer);
 }).RequireAuthorization();
 
 app.MapPost("/admin/integrations/save", async (

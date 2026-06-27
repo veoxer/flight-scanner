@@ -6,7 +6,7 @@ Self-hosted ASP.NET Core/Blazor PWA for searching SerpApi Google Flights fares a
 
 - First-run setup wizard at `/setup` that creates the admin account.
 - ASP.NET Core Identity users, roles, passkeys, lockout, and admin user management.
-- Flight search by airport, country, or continent with common filters: passengers, dates, cabin, bags, direct-only, and stops.
+- Flight search by airport, city, country, or continent with one-way/round-trip mode and common filters: passengers, dates, cabin, bags, direct-only, and stops.
 - Price alerts with a background scanner.
 - Notification pipeline for browser push subscription records, SMTP email, and a configurable WhatsApp HTTP API.
 - Admin reminder settings for delivery channels, SMTP, WhatsApp, and Web Push VAPID keys.
@@ -77,7 +77,9 @@ AllowedHosts=flight.veoxer.com;192.168.11.120;localhost
 
 The app ships with SerpApi Google Flights support. Create a SerpApi account, then enter the API key under `Admin > Flight API`.
 
-SerpApi free plans have a monthly search quota. The app limits broad country or continent searches to one route pair per search to avoid burning through the free quota too quickly. SerpApi cached searches can be free when the exact query is served from their cache.
+SerpApi free plans have a monthly search quota. Airport searches use IATA codes; city, country, and continent searches use cached Wikidata Freebase IDs as Google Flights location KGMIDs. The app sends one SerpApi Google Flights request per search and does not expand cities or countries into multiple airport-pair searches.
+
+Wikidata country, continent, and matching city Freebase IDs are imported once at startup when `LOCATION_IDENTIFIER_IMPORT_ENABLED=true`. Use `LOCATION_IDENTIFIER_IMPORT_REFRESH=true` to refresh the cache. City import is paged with `LOCATION_IDENTIFIER_IMPORT_CITY_BATCH_SIZE` and `LOCATION_IDENTIFIER_IMPORT_MAX_CITY_PAGES`.
 
 ## Notes
 

@@ -45,49 +45,6 @@
         { code: "ZAR", symbol: "R", name: "South African Rand" },
         { code: "INR", symbol: "₹", name: "Indian Rupee" }
     ];
-    var routeLocationFallbacks = {
-        "AF": { label: "Africa", lat: 1.65, lng: 17.8 },
-        "AFRICA": { label: "Africa", lat: 1.65, lng: 17.8 },
-        "AN": { label: "Antarctica", lat: -82.8, lng: 0 },
-        "ANTARCTICA": { label: "Antarctica", lat: -82.8, lng: 0 },
-        "AS": { label: "Asia", lat: 34, lng: 100 },
-        "ASIA": { label: "Asia", lat: 34, lng: 100 },
-        "EU": { label: "Europe", lat: 54.5, lng: 15 },
-        "EUROPE": { label: "Europe", lat: 54.5, lng: 15 },
-        "NA": { label: "North America", lat: 48.2, lng: -100 },
-        "NORTH AMERICA": { label: "North America", lat: 48.2, lng: -100 },
-        "OC": { label: "Oceania", lat: -25, lng: 134 },
-        "OCEANIA": { label: "Oceania", lat: -25, lng: 134 },
-        "SA": { label: "South America", lat: -14.6, lng: -58.4 },
-        "SOUTH AMERICA": { label: "South America", lat: -14.6, lng: -58.4 },
-        "JFK": { label: "JFK", lat: 40.6413, lng: -73.7781 },
-        "LAX": { label: "LAX", lat: 33.9416, lng: -118.4085 },
-        "YYZ": { label: "YYZ", lat: 43.6777, lng: -79.6248 },
-        "LHR": { label: "LHR", lat: 51.47, lng: -0.4543 },
-        "CDG": { label: "CDG", lat: 49.0097, lng: 2.5479 },
-        "AMS": { label: "AMS", lat: 52.3105, lng: 4.7683 },
-        "CMN": { label: "CMN", lat: 33.3675, lng: -7.5898 },
-        "CAI": { label: "CAI", lat: 30.112, lng: 31.4 },
-        "JNB": { label: "JNB", lat: -26.1337, lng: 28.242 },
-        "DXB": { label: "DXB", lat: 25.2532, lng: 55.3657 },
-        "SIN": { label: "SIN", lat: 1.3644, lng: 103.9915 },
-        "HND": { label: "HND", lat: 35.5494, lng: 139.7798 },
-        "SYD": { label: "SYD", lat: -33.9399, lng: 151.1753 },
-        "AKL": { label: "AKL", lat: -37.0082, lng: 174.785 },
-        "GRU": { label: "GRU", lat: -23.4356, lng: -46.4731 },
-        "EZE": { label: "EZE", lat: -34.8222, lng: -58.5358 },
-        "NEW YORK": { label: "New York", lat: 40.7128, lng: -74.006 },
-        "LONDON": { label: "London", lat: 51.5072, lng: -0.1276 },
-        "PARIS": { label: "Paris", lat: 48.8566, lng: 2.3522 },
-        "CASABLANCA": { label: "Casablanca", lat: 33.5731, lng: -7.5898 },
-        "MOROCCO": { label: "Morocco", lat: 31.8, lng: -7.1 },
-        "FRANCE": { label: "France", lat: 46.2, lng: 2.2 },
-        "UNITED KINGDOM": { label: "United Kingdom", lat: 54.2, lng: -2.7 },
-        "UNITED STATES": { label: "United States", lat: 39.8, lng: -98.6 },
-        "CANADA": { label: "Canada", lat: 56.1, lng: -106.3 },
-        "EGYPT": { label: "Egypt", lat: 26.8, lng: 30.8 },
-        "SOUTH AFRICA": { label: "South Africa", lat: -30.6, lng: 22.9 }
-    };
 
     function maskDateField(field) {
         var digits = field.value.replace(/\D/g, "").slice(0, 8);
@@ -281,23 +238,50 @@
             var destination = root.querySelector("[data-location-input='destination']");
             var originType = root.querySelector("[data-location-type='origin']");
             var destinationType = root.querySelector("[data-location-type='destination']");
+            var originCode = root.querySelector("[data-location-code='origin']");
+            var destinationCode = root.querySelector("[data-location-code='destination']");
             var originValue = origin.value;
             var originTypeValue = originType.value;
-            var originLat = origin.dataset.locationLat || "";
-            var originLng = origin.dataset.locationLng || "";
-            var originLabel = origin.dataset.locationLabel || "";
+            var originCodeValue = originCode.value;
             origin.value = destination.value;
             destination.value = originValue;
             originType.value = destinationType.value;
             destinationType.value = originTypeValue;
-            origin.dataset.locationLat = destination.dataset.locationLat || "";
-            origin.dataset.locationLng = destination.dataset.locationLng || "";
-            origin.dataset.locationLabel = destination.dataset.locationLabel || "";
-            destination.dataset.locationLat = originLat;
-            destination.dataset.locationLng = originLng;
-            destination.dataset.locationLabel = originLabel;
-            updateRouteMap(root);
+            originCode.value = destinationCode.value;
+            destinationCode.value = originCodeValue;
         });
+    }
+
+    function bindTripMode(root) {
+        var group = document.querySelector("[data-trip-mode-group]");
+        var hidden = root.querySelector("[data-trip-type-value]");
+        var returnField = root.querySelector("[data-return-field]");
+        var returnInput = root.querySelector("[data-flight-date='return']");
+        if (!group || !hidden || group.dataset.boundTripMode === "true") {
+            return;
+        }
+
+        function setTripType(value) {
+            var isOneWay = value === "OneWay";
+            hidden.value = isOneWay ? "OneWay" : "Return";
+            group.querySelectorAll("[data-trip-mode-option]").forEach(function (button) {
+                button.classList.toggle("active", button.getAttribute("data-trip-mode-option") === hidden.value);
+            });
+            if (returnField) {
+                returnField.hidden = isOneWay;
+            }
+            if (returnInput) {
+                returnInput.disabled = isOneWay;
+            }
+        }
+
+        group.dataset.boundTripMode = "true";
+        group.querySelectorAll("[data-trip-mode-option]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                setTripType(button.getAttribute("data-trip-mode-option"));
+            });
+        });
+        setTripType(hidden.value === "OneWay" ? "OneWay" : "Return");
     }
 
     function bindCurrencyCombobox(root) {
@@ -463,7 +447,7 @@
         syncOptions();
     }
 
-    function createOption(item, input, typeInput, menu, root) {
+    function createOption(item, input, typeInput, codeInput, menu) {
         var button = document.createElement("button");
         button.type = "button";
         button.className = "location-option";
@@ -476,144 +460,10 @@
             event.preventDefault();
             input.value = item.value;
             typeInput.value = item.type;
-            input.dataset.locationLat = item.latitude == null ? "" : String(item.latitude);
-            input.dataset.locationLng = item.longitude == null ? "" : String(item.longitude);
-            input.dataset.locationLabel = item.primary || item.value;
+            codeInput.value = item.code || "";
             menu.hidden = true;
-            updateRouteMap(root);
         });
         return button;
-    }
-
-    function normalizeRouteKey(value) {
-        return (value || "")
-            .split(" - ")[0]
-            .split("·")[0]
-            .trim()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toUpperCase();
-    }
-
-    function readDatasetCoordinate(input) {
-        var lat = Number(input.dataset.locationLat);
-        var lng = Number(input.dataset.locationLng);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            return {
-                label: input.dataset.locationLabel || input.value.trim(),
-                lat: lat,
-                lng: lng
-            };
-        }
-
-        return null;
-    }
-
-    function resolveRouteLocation(input) {
-        if (!input || !input.value.trim()) {
-            return null;
-        }
-
-        var dataset = readDatasetCoordinate(input);
-        if (dataset) {
-            return dataset;
-        }
-
-        var key = normalizeRouteKey(input.value);
-        var fallback = routeLocationFallbacks[key];
-        if (fallback) {
-            return fallback;
-        }
-
-        if (key.length > 3) {
-            fallback = routeLocationFallbacks[key.slice(0, 3)];
-            if (fallback) {
-                return fallback;
-            }
-        }
-
-        return null;
-    }
-
-    function projectRoutePoint(location) {
-        var lng = Math.max(-180, Math.min(180, location.lng));
-        var lat = Math.max(-85, Math.min(85, location.lat));
-        return {
-            x: 40 + ((lng + 180) / 360) * 880,
-            y: 28 + ((85 - lat) / 170) * 364
-        };
-    }
-
-    function setPin(pin, label, point, value) {
-        pin.hidden = false;
-        pin.setAttribute("transform", "translate(" + point.x.toFixed(1) + " " + point.y.toFixed(1) + ")");
-        label.textContent = (value || "").slice(0, 22);
-    }
-
-    function updateRouteMap(root) {
-        var panel = root.querySelector("[data-route-map]");
-        if (!panel) {
-            return;
-        }
-
-        var originInput = root.querySelector("[data-location-input='origin']");
-        var destinationInput = root.querySelector("[data-location-input='destination']");
-        var title = panel.querySelector("[data-route-map-title]");
-        var line = panel.querySelector("[data-route-line]");
-        var shadow = panel.querySelector("[data-route-shadow]");
-        var plane = panel.querySelector("[data-route-plane]");
-        var motion = panel.querySelector("[data-route-motion]");
-        var originPin = panel.querySelector("[data-route-pin='origin']");
-        var destinationPin = panel.querySelector("[data-route-pin='destination']");
-        var originLabel = panel.querySelector("[data-route-label='origin']");
-        var destinationLabel = panel.querySelector("[data-route-label='destination']");
-        var origin = resolveRouteLocation(originInput);
-        var destination = resolveRouteLocation(destinationInput);
-
-        originPin.hidden = true;
-        destinationPin.hidden = true;
-        line.hidden = true;
-        shadow.hidden = true;
-        plane.hidden = true;
-
-        if (origin) {
-            setPin(originPin, originLabel, projectRoutePoint(origin), origin.label || originInput.value);
-        }
-
-        if (destination) {
-            setPin(destinationPin, destinationLabel, projectRoutePoint(destination), destination.label || destinationInput.value);
-        }
-
-        if (origin && destination) {
-            var start = projectRoutePoint(origin);
-            var end = projectRoutePoint(destination);
-            var distance = Math.hypot(end.x - start.x, end.y - start.y);
-            var lift = Math.max(46, Math.min(132, distance * 0.22));
-            var direction = end.x >= start.x ? 1 : -1;
-            var control = {
-                x: (start.x + end.x) / 2 + direction * Math.min(40, distance * 0.06),
-                y: Math.min(start.y, end.y) - lift
-            };
-            var path = "M" + start.x.toFixed(1) + " " + start.y.toFixed(1) + " Q" + control.x.toFixed(1) + " " + control.y.toFixed(1) + " " + end.x.toFixed(1) + " " + end.y.toFixed(1);
-            line.setAttribute("d", path);
-            shadow.setAttribute("d", path);
-            line.hidden = false;
-            shadow.hidden = false;
-            plane.hidden = false;
-            if (motion && typeof motion.beginElement === "function") {
-                motion.beginElement();
-            }
-            title.textContent = (origin.label || originInput.value) + " → " + (destination.label || destinationInput.value);
-        } else if (origin) {
-            title.textContent = origin.label || originInput.value;
-        } else if (destination) {
-            title.textContent = destination.label || destinationInput.value;
-        } else {
-            title.textContent = title.getAttribute("data-default-title") || title.textContent;
-            if (!title.getAttribute("data-default-title")) {
-                title.setAttribute("data-default-title", title.textContent);
-            }
-        }
     }
 
     function bindLocationAutocomplete(root) {
@@ -626,6 +476,7 @@
             var name = input.getAttribute("data-location-input");
             var menu = root.querySelector("[data-location-menu='" + name + "']");
             var typeInput = root.querySelector("[data-location-type='" + name + "']");
+            var codeInput = root.querySelector("[data-location-code='" + name + "']");
             var controller = null;
 
             function close() {
@@ -637,10 +488,7 @@
             input.addEventListener("blur", close);
             input.addEventListener("input", function () {
                 var query = input.value.trim();
-                input.dataset.locationLat = "";
-                input.dataset.locationLng = "";
-                input.dataset.locationLabel = "";
-                updateRouteMap(root);
+                codeInput.value = "";
                 if (query.length < 2) {
                     menu.hidden = true;
                     menu.replaceChildren();
@@ -670,7 +518,7 @@
                         }
 
                         items.forEach(function (item) {
-                            menu.appendChild(createOption(item, input, typeInput, menu, root));
+                            menu.appendChild(createOption(item, input, typeInput, codeInput, menu));
                         });
                         menu.hidden = false;
                     })
@@ -681,29 +529,6 @@
                     });
             });
         });
-    }
-
-    function bindRouteMap(root) {
-        var title = root.querySelector("[data-route-map-title]");
-        if (title && !title.getAttribute("data-default-title")) {
-            title.setAttribute("data-default-title", title.textContent);
-        }
-
-        if (root.dataset.boundRouteMap === "true") {
-            updateRouteMap(root);
-            return;
-        }
-
-        root.dataset.boundRouteMap = "true";
-        root.querySelectorAll("[data-location-input]").forEach(function (input) {
-            input.addEventListener("change", function () {
-                updateRouteMap(root);
-            });
-            input.addEventListener("blur", function () {
-                updateRouteMap(root);
-            });
-        });
-        updateRouteMap(root);
     }
 
     function cabinText(value) {
@@ -775,19 +600,180 @@
         });
     }
 
+    function formatDurationValue(value) {
+        if (!value) {
+            return "";
+        }
+
+        if (typeof value === "number") {
+            var totalMinutes = Math.round(value / 600000000);
+            return Math.floor(totalMinutes / 60) + " h " + (totalMinutes % 60) + " m";
+        }
+
+        var text = String(value);
+        var days = 0;
+        var dayMatch = /^(\d+)\.(.+)$/.exec(text);
+        if (dayMatch) {
+            days = Number(dayMatch[1]) || 0;
+            text = dayMatch[2];
+        }
+
+        var pieces = text.split(":").map(function (piece) { return Number(piece) || 0; });
+        var hours = (days * 24) + (pieces[0] || 0);
+        var minutes = pieces[1] || 0;
+        return hours + " h " + minutes + " m";
+    }
+
+    function formatSegmentTime(value) {
+        if (!value) {
+            return "--:--";
+        }
+
+        var date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return "--:--";
+        }
+
+        return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+
+    function airportLabel(airport) {
+        if (!airport) {
+            return "";
+        }
+
+        return airport.code ? airport.name + " (" + airport.code + ")" : airport.name;
+    }
+
+    function kilogramsFromGrams(grams) {
+        return Math.max(0, Math.round(Number(grams || 0) / 1000)).toLocaleString();
+    }
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function renderReturnLeg(details, offer) {
+        var leg = offer && offer.itineraryLegs && offer.itineraryLegs.length ? offer.itineraryLegs[0] : null;
+        if (!leg) {
+            details.innerHTML = '<div class="flight-leg-heading"><div><strong>' +
+                escapeHtml(details.closest("[data-flight-result]").dataset.returnTitle) +
+                '</strong><span>' + escapeHtml(details.closest("[data-flight-result]").dataset.errorText) + '</span></div></div>';
+            return;
+        }
+
+        var result = details.closest("[data-flight-result]");
+        var durationLabel = result.dataset.durationLabel || "Travel time";
+        var layoverLabel = result.dataset.layoverLabel || "Layover";
+        var co2Label = result.dataset.co2Label || "kg CO2e";
+        var html = '<div class="flight-leg-heading"><div><strong>' +
+            escapeHtml(result.dataset.returnTitle || "Return flight") +
+            '</strong><span>' + escapeHtml(leg.date || "") + '</span></div><span>' +
+            escapeHtml(durationLabel) + ': ' + escapeHtml(formatDurationValue(leg.duration)) + '</span></div><div class="flight-timeline">';
+
+        (leg.segments || []).forEach(function (segment, index) {
+            html += '<div class="flight-segment"><div class="timeline-rail"><span></span><i></i><span></span></div><div class="segment-main">' +
+                '<div class="segment-airports"><strong>' + formatSegmentTime(segment.departureAirport && segment.departureAirport.time) +
+                '</strong><span>' + escapeHtml(airportLabel(segment.departureAirport)) +
+                '</span><strong>' + formatSegmentTime(segment.arrivalAirport && segment.arrivalAirport.time) +
+                '</strong><span>' + escapeHtml(airportLabel(segment.arrivalAirport)) + '</span></div>' +
+                '<div class="segment-meta"><span>' + escapeHtml(formatDurationValue(segment.duration)) + '</span><span>' + escapeHtml(segment.airline || "") + '</span>';
+
+            [segment.travelClass, segment.airplane, segment.flightNumber].forEach(function (value) {
+                if (value) {
+                    html += '<span>' + escapeHtml(value) + '</span>';
+                }
+            });
+            html += '</div>';
+
+            if (segment.extensions && segment.extensions.length) {
+                html += '<div class="flight-tags">';
+                segment.extensions.slice(0, 4).forEach(function (item) {
+                    html += '<span>' + escapeHtml(item) + '</span>';
+                });
+                html += '</div>';
+            }
+
+            html += '</div></div>';
+            if (leg.layovers && leg.layovers[index]) {
+                var layover = leg.layovers[index];
+                html += '<div class="layover-row"><span>' + escapeHtml(layoverLabel) + ': ' + escapeHtml(formatDurationValue(layover.duration)) +
+                    '</span><strong>' + escapeHtml(layover.name || "") + escapeHtml(layover.code ? " (" + layover.code + ")" : "") + '</strong></div>';
+            }
+        });
+
+        html += '</div>';
+        if (offer.carbonEmissionsGrams) {
+            html += '<div class="flight-detail-side"><span>' +
+                escapeHtml(result.dataset.emissionsLabel || "Emissions estimate") + ': ' +
+                escapeHtml(kilogramsFromGrams(offer.carbonEmissionsGrams)) + ' ' + escapeHtml(co2Label) + '</span></div>';
+        }
+
+        details.innerHTML = html;
+    }
+
+    function bindFlightResultDetails() {
+        document.querySelectorAll("[data-flight-result]").forEach(function (result) {
+            if (result.dataset.boundFlightResult === "true") {
+                return;
+            }
+
+            result.dataset.boundFlightResult = "true";
+            result.addEventListener("toggle", function () {
+                var token = result.getAttribute("data-return-token");
+                var target = result.querySelector("[data-return-details]");
+                if (!result.open || !target || !token || target.dataset.loaded === "true" || target.dataset.loading === "true") {
+                    return;
+                }
+
+                target.dataset.loading = "true";
+                target.querySelector(".flight-leg-heading span").textContent = result.dataset.loadingText || "Loading return flight";
+                fetch("/api/flights/return-details?departureToken=" + encodeURIComponent(token) +
+                    "&currency=" + encodeURIComponent(result.getAttribute("data-currency") || "MAD"), {
+                    headers: { "Accept": "application/json" }
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error("Return details request failed");
+                        }
+                        return response.json();
+                    })
+                    .then(function (offer) {
+                        target.dataset.loaded = "true";
+                        renderReturnLeg(target, offer);
+                    })
+                    .catch(function () {
+                        target.innerHTML = '<div class="flight-leg-heading"><div><strong>' +
+                            escapeHtml(result.dataset.returnTitle || "Return flight") + '</strong><span>' +
+                            escapeHtml(result.dataset.errorText || "Return flight details unavailable") + '</span></div></div>';
+                    })
+                    .finally(function () {
+                        target.dataset.loading = "false";
+                    });
+            });
+        });
+    }
+
     function bindSearchForm() {
         var root = document.querySelector(".search-native-form");
         if (!root) {
+            bindFlightResultDetails();
             return;
         }
 
         bindRouteSwap(root);
+        bindTripMode(root);
         bindDatePair(root);
         bindLocationAutocomplete(root);
-        bindRouteMap(root);
         bindTravellerPanel(root);
         bindCurrencyCombobox(root);
         bindAlertTargets(root);
+        bindFlightResultDetails();
     }
 
     document.addEventListener("DOMContentLoaded", bindSearchForm);

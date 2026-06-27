@@ -10,6 +10,7 @@ namespace FlightScanner.Features.Flights;
 public interface IFlightSearchService
 {
     Task<IReadOnlyList<FlightOffer>> SearchAsync(FlightSearchQuery query, CancellationToken cancellationToken = default);
+    Task<FlightOffer?> GetReturnFlightAsync(string departureToken, string currency, CancellationToken cancellationToken = default);
     IReadOnlyList<AirlineSearchLink> GetAirlineSearchLinks(FlightSearchQuery query);
 }
 
@@ -19,9 +20,10 @@ public sealed class FlightSearchService(
     ILogger<FlightSearchService> logger) : IFlightSearchService
 {
     private const int SerpApiMaxOffers = 20;
-    private const int SerpApiMaxRoutePairs = 1;
     private const string SerpApiGoogleCountry = "ma";
     private const string SerpApiLanguage = "en";
+    private const string GoogleFlightsProvider = "SerpApiGoogleFlights";
+    private const string FreebaseIdentifierType = "FreebaseId";
 
     private static readonly IReadOnlyList<AirlineDirectoryEntry> AirlineDirectory =
     [
@@ -71,6 +73,57 @@ public sealed class FlightSearchService(
     public async Task<IReadOnlyList<FlightOffer>> SearchAsync(FlightSearchQuery query, CancellationToken cancellationToken = default)
     {
         return await TrySearchConfiguredProviderAsync(query, cancellationToken);
+    }
+
+    public async Task<FlightOffer?> GetReturnFlightAsync(string departureToken, string currency, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(departureToken))
+        {
+            return null;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var setting = await db.IntegrationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider && item.Enabled, cancellationToken);
+        if (setting is null || string.IsNullOrWhiteSpace(setting.SettingsJson))
+        {
+            return null;
+        }
+
+        var options = JsonSerializer.Deserialize<FlightProviderOptions>(setting.SettingsJson, JsonOptions()) ?? new();
+        if (string.IsNullOrWhiteSpace(options.SerpApiApiKey))
+        {
+            return null;
+        }
+
+        try
+        {
+            var requestUrl = BuildSerpApiReturnUrl(options, departureToken, currency);
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+            var client = httpClientFactory.CreateClient("serpapi");
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("SerpApi Google Flights return details failed with status {StatusCode}.", response.StatusCode);
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.TryGetProperty("error", out var error))
+            {
+                logger.LogWarning("SerpApi Google Flights return details returned an error: {Error}", error.GetString());
+                return null;
+            }
+
+            return ParseSerpApiOffers(document.RootElement, null, null, null, "Return")
+                .OrderBy(offer => offer.Price)
+                .FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "SerpApi Google Flights return details failed.");
+            return null;
+        }
     }
 
     public IReadOnlyList<AirlineSearchLink> GetAirlineSearchLinks(FlightSearchQuery query)
@@ -169,33 +222,33 @@ public sealed class FlightSearchService(
 
         try
         {
-            var routePairs = await ResolveRoutePairsAsync(query, SerpApiMaxRoutePairs, cancellationToken);
-            var offers = new List<FlightOffer>();
-
-            foreach (var (origin, destination) in routePairs)
+            var origin = await ResolveSerpApiLocationIdAsync(query.OriginType, query.Origin, cancellationToken);
+            var destination = await ResolveSerpApiLocationIdAsync(query.DestinationType, query.Destination, cancellationToken);
+            if (string.IsNullOrWhiteSpace(origin) || string.IsNullOrWhiteSpace(destination) ||
+                origin.Equals(destination, StringComparison.OrdinalIgnoreCase))
             {
-                var requestUrl = BuildSerpApiUrl(query, options, origin, destination);
-                using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
-
-                var client = httpClientFactory.CreateClient("serpapi");
-                using var response = await client.SendAsync(request, cancellationToken);
-                if (!response.IsSuccessStatusCode)
-                {
-                    logger.LogWarning("SerpApi Google Flights search failed with status {StatusCode}.", response.StatusCode);
-                    continue;
-                }
-
-                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-                if (document.RootElement.TryGetProperty("error", out var error))
-                {
-                    logger.LogWarning("SerpApi Google Flights returned an error: {Error}", error.GetString());
-                    continue;
-                }
-
-                offers.AddRange(ParseSerpApiOffers(document.RootElement, query, origin, destination));
+                return [];
             }
 
-            return offers
+            var requestUrl = BuildSerpApiUrl(query, options, origin, destination);
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+
+            var client = httpClientFactory.CreateClient("serpapi");
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("SerpApi Google Flights search failed with status {StatusCode}.", response.StatusCode);
+                return [];
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.TryGetProperty("error", out var error))
+            {
+                logger.LogWarning("SerpApi Google Flights returned an error: {Error}", error.GetString());
+                return [];
+            }
+
+            return ParseSerpApiOffers(document.RootElement, query, origin, destination)
                 .OrderBy(offer => offer.Price)
                 .Take(SerpApiMaxOffers)
                 .ToList();
@@ -207,24 +260,12 @@ public sealed class FlightSearchService(
         }
     }
 
-    private async Task<IReadOnlyList<(string Origin, string Destination)>> ResolveRoutePairsAsync(FlightSearchQuery query, int maxRoutePairs, CancellationToken cancellationToken)
-    {
-        var origins = await ResolveLocationCodesAsync(query.OriginType, query.Origin, cancellationToken);
-        var destinations = await ResolveLocationCodesAsync(query.DestinationType, query.Destination, cancellationToken);
-
-        return origins
-            .SelectMany(origin => destinations.Select(destination => (Origin: origin, Destination: destination)))
-            .Where(pair => !pair.Origin.Equals(pair.Destination, StringComparison.OrdinalIgnoreCase))
-            .Take(maxRoutePairs)
-            .ToList();
-    }
-
-    private async Task<IReadOnlyList<string>> ResolveLocationCodesAsync(LocationType type, string value, CancellationToken cancellationToken)
+    private async Task<string?> ResolveSerpApiLocationIdAsync(LocationType type, string value, CancellationToken cancellationToken)
     {
         var trimmed = value.Trim();
-        if (trimmed.Length == 3 && trimmed.All(char.IsLetter))
+        if (string.IsNullOrWhiteSpace(trimmed))
         {
-            return [trimmed.ToUpperInvariant()];
+            return null;
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -240,55 +281,49 @@ public sealed class FlightSearchService(
                 .Select(location => location.Code)
                 .Where(code => code.Length == 3)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(4)
-                .ToList();
+                .FirstOrDefault() ?? (trimmed.Length == 3 && trimmed.All(char.IsLetter)
+                    ? trimmed.ToUpperInvariant()
+                    : null);
         }
 
-        if (type is LocationType.City)
+        return await ResolveCachedLocationIdentifierAsync(db, type, trimmed, matches, cancellationToken);
+    }
+
+    private static async Task<string?> ResolveCachedLocationIdentifierAsync(
+        ApplicationDbContext db,
+        LocationType type,
+        string value,
+        IReadOnlyCollection<FlightLocation> matches,
+        CancellationToken cancellationToken)
+    {
+        if (type is LocationType.Airport)
         {
-            var directCityCodes = matches
-                .Select(location => location.Code)
-                .Where(code => code.Length == 3)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (directCityCodes.Count > 0)
-            {
-                return directCityCodes.Take(4).ToList();
-            }
-
-            var cityNames = matches.Select(match => match.Name).Append(trimmed).ToList();
-            var cityCountryCodes = matches
-                .Select(match => match.CountryCode)
-                .Where(countryCode => !string.IsNullOrWhiteSpace(countryCode))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            var airportsForCity = await db.FlightLocations.AsNoTracking()
-                .Where(location => location.Type == LocationType.Airport && location.Code.Length == 3)
-                .ToListAsync(cancellationToken);
-
-            return airportsForCity
-                .Where(airport =>
-                    cityCountryCodes.Count == 0 || cityCountryCodes.Contains(airport.CountryCode ?? "", StringComparer.OrdinalIgnoreCase))
-                .Where(airport => cityNames.Any(city => airport.Name.Contains(city, StringComparison.OrdinalIgnoreCase)))
-                .Select(airport => airport.Code)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(4)
-                .ToList();
+            return null;
         }
 
-        var scopeNames = matches.Select(match => match.Name).Append(trimmed).ToList();
-        var airports = await db.FlightLocations.AsNoTracking()
-            .Where(location => location.Type == LocationType.Airport)
-            .ToListAsync(cancellationToken);
-
-        return airports
-            .Where(airport => type == LocationType.Continent
-                ? scopeNames.Any(scope => airport.Continent.Equals(scope, StringComparison.OrdinalIgnoreCase) || airport.Code.Equals(scope, StringComparison.OrdinalIgnoreCase))
-                : scopeNames.Any(scope => airport.CountryName == scope || airport.CountryCode == scope || airport.Code == scope))
-            .Select(airport => airport.Code)
+        var locationCodes = matches
+            .Select(match => match.Code)
+            .Append(value)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim().ToUpperInvariant())
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(4)
             .ToList();
+        if (locationCodes.Count == 0)
+        {
+            return null;
+        }
+
+        return await db.FlightLocationIdentifiers.AsNoTracking()
+            .Where(identifier =>
+                identifier.LocationType == type &&
+                identifier.Provider == GoogleFlightsProvider &&
+                identifier.IdentifierType == FreebaseIdentifierType &&
+                locationCodes.Contains(identifier.LocationCode))
+            .OrderBy(identifier => identifier.Source == "Seed" ? 0 : 1)
+            .ThenBy(identifier => identifier.LocationCode)
+            .Select(identifier => identifier.Identifier)
+            .Distinct()
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     private static string BuildSerpApiUrl(FlightSearchQuery query, FlightProviderOptions options, string origin, string destination)
@@ -342,7 +377,32 @@ public sealed class FlightSearchService(
         return $"https://serpapi.com/search?{queryString}";
     }
 
-    private static IEnumerable<FlightOffer> ParseSerpApiOffers(JsonElement root, FlightSearchQuery query, string origin, string destination)
+    private static string BuildSerpApiReturnUrl(FlightProviderOptions options, string departureToken, string currency)
+    {
+        var parameters = new Dictionary<string, string?>
+        {
+            ["engine"] = "google_flights",
+            ["api_key"] = options.SerpApiApiKey,
+            ["departure_token"] = departureToken,
+            ["currency"] = string.IsNullOrWhiteSpace(currency) ? "MAD" : currency.Trim().ToUpperInvariant(),
+            ["hl"] = SerpApiLanguage,
+            ["gl"] = SerpApiGoogleCountry,
+            ["output"] = "json"
+        };
+
+        var queryString = string.Join("&", parameters
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Value))
+            .Select(parameter => $"{Uri.EscapeDataString(parameter.Key)}={Uri.EscapeDataString(parameter.Value!)}"));
+
+        return $"https://serpapi.com/search?{queryString}";
+    }
+
+    private static IEnumerable<FlightOffer> ParseSerpApiOffers(
+        JsonElement root,
+        FlightSearchQuery? query,
+        string? origin,
+        string? destination,
+        string legKind = "Departure")
     {
         foreach (var offer in ReadSerpApiOfferArray(root, "best_flights").Concat(ReadSerpApiOfferArray(root, "other_flights")))
         {
@@ -367,12 +427,21 @@ public sealed class FlightSearchService(
             var duration = TryGetInt(offer, "total_duration", out var totalDuration)
                 ? TimeSpan.FromMinutes(totalDuration)
                 : TimeSpan.FromMinutes(flights.Sum(flight => TryGetInt(flight, "duration", out var durationMinutes) ? durationMinutes : 0));
-            var departDate = ReadAirportDate(firstFlight, "departure_airport") ?? query.DepartFrom;
-            var offerOrigin = ReadAirportId(firstFlight, "departure_airport") ?? origin;
-            var offerDestination = ReadAirportId(lastFlight, "arrival_airport") ?? destination;
+            var departDate = ReadAirportDate(firstFlight, "departure_airport") ?? query?.DepartFrom ?? DateOnly.FromDateTime(DateTime.Today);
+            var offerOrigin = ReadAirportId(firstFlight, "departure_airport") ?? origin ?? "";
+            var offerDestination = ReadAirportId(lastFlight, "arrival_airport") ?? destination ?? "";
             var bookingUrl = root.TryGetProperty("search_metadata", out var metadata)
                 ? ReadString(metadata, "google_flights_url") ?? "https://www.google.com/travel/flights"
                 : "https://www.google.com/travel/flights";
+            var itineraryLegs = new[]
+            {
+                ParseSerpApiItineraryLeg(legKind, flights, offer)
+            };
+            var extensions = ReadStringArray(offer, "extensions");
+            var carbonEmissions = ReadCarbonEmissions(offer);
+            var responseCurrency = root.TryGetProperty("search_parameters", out var searchParameters)
+                ? ReadString(searchParameters, "currency")
+                : null;
 
             yield return new FlightOffer(
                 "SerpApi Google Flights",
@@ -381,13 +450,113 @@ public sealed class FlightSearchService(
                 offerOrigin,
                 offerDestination,
                 departDate,
-                query.ReturnFrom,
+                query?.ReturnFrom,
                 price,
-                query.Currency,
+                query?.Currency ?? responseCurrency ?? "MAD",
                 stops,
                 duration,
-                bookingUrl);
+                bookingUrl,
+                itineraryLegs,
+                extensions,
+                carbonEmissions.ThisFlight,
+                carbonEmissions.Typical,
+                carbonEmissions.DifferencePercent,
+                ReadString(offer, "airline_logo") ?? ReadString(firstFlight, "airline_logo"),
+                ReadString(offer, "departure_token"),
+                ReadString(offer, "booking_token"),
+                ReadString(offer, "type") ?? (query?.ReturnFrom is null ? "One way" : "Round trip"));
         }
+    }
+
+    private static FlightItineraryLeg ParseSerpApiItineraryLeg(string kind, IReadOnlyList<JsonElement> flights, JsonElement offer)
+    {
+        var segments = flights.Select(ParseSerpApiSegment).ToList();
+        var duration = TryGetInt(offer, "total_duration", out var totalDuration)
+            ? TimeSpan.FromMinutes(totalDuration)
+            : TimeSpan.FromMinutes(flights.Sum(flight => TryGetInt(flight, "duration", out var durationMinutes) ? durationMinutes : 0));
+        var date = segments.FirstOrDefault()?.DepartureAirport.Time is { } departureTime
+            ? (DateOnly?)DateOnly.FromDateTime(departureTime)
+            : null;
+
+        return new FlightItineraryLeg(kind, date, duration, segments, ParseSerpApiLayovers(offer));
+    }
+
+    private static FlightSegment ParseSerpApiSegment(JsonElement flight)
+    {
+        return new FlightSegment(
+            ReadAirport(flight, "departure_airport"),
+            ReadAirport(flight, "arrival_airport"),
+            TryGetInt(flight, "duration", out var duration) ? TimeSpan.FromMinutes(duration) : TimeSpan.Zero,
+            ReadString(flight, "airline") ?? "Airline",
+            ReadString(flight, "airline_logo"),
+            ReadString(flight, "flight_number") ?? "",
+            ReadString(flight, "airplane"),
+            ReadString(flight, "travel_class"),
+            ReadString(flight, "legroom"),
+            ReadStringArray(flight, "extensions"));
+    }
+
+    private static IReadOnlyList<FlightLayover> ParseSerpApiLayovers(JsonElement offer)
+    {
+        if (!offer.TryGetProperty("layovers", out var layovers) || layovers.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return layovers.EnumerateArray()
+            .Select(layover => new FlightLayover(
+                ReadString(layover, "name") ?? "Layover",
+                ReadString(layover, "id") ?? "",
+                TryGetInt(layover, "duration", out var duration) ? TimeSpan.FromMinutes(duration) : TimeSpan.Zero,
+                layover.TryGetProperty("overnight", out var overnight) && overnight.ValueKind == JsonValueKind.True))
+            .ToList();
+    }
+
+    private static FlightAirport ReadAirport(JsonElement flight, string propertyName)
+    {
+        if (flight.ValueKind != JsonValueKind.Object ||
+            !flight.TryGetProperty(propertyName, out var airport) ||
+            airport.ValueKind != JsonValueKind.Object)
+        {
+            return new FlightAirport("Airport", "", null);
+        }
+
+        return new FlightAirport(
+            ReadString(airport, "name") ?? "Airport",
+            ReadString(airport, "id") ?? "",
+            DateTime.TryParse(ReadString(airport, "time"), out var time) ? time : null);
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var values) ||
+            values.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return values.EnumerateArray()
+            .Where(value => value.ValueKind == JsonValueKind.String)
+            .Select(value => value.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .ToList();
+    }
+
+    private static (int? ThisFlight, int? Typical, int? DifferencePercent) ReadCarbonEmissions(JsonElement offer)
+    {
+        if (offer.ValueKind != JsonValueKind.Object ||
+            !offer.TryGetProperty("carbon_emissions", out var emissions) ||
+            emissions.ValueKind != JsonValueKind.Object)
+        {
+            return (null, null, null);
+        }
+
+        return (
+            TryGetInt(emissions, "this_flight", out var thisFlight) ? thisFlight : null,
+            TryGetInt(emissions, "typical_for_this_route", out var typical) ? typical : null,
+            TryGetInt(emissions, "difference_percent", out var differencePercent) ? differencePercent : null);
     }
 
     private static IEnumerable<JsonElement> ReadSerpApiOfferArray(JsonElement root, string propertyName)

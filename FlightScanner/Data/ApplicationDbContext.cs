@@ -10,6 +10,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<FlightLocation> FlightLocations => Set<FlightLocation>();
+    public DbSet<FlightLocationIdentifier> FlightLocationIdentifiers => Set<FlightLocationIdentifier>();
     public DbSet<PriceAlert> PriceAlerts => Set<PriceAlert>();
     public DbSet<FlightScanResult> FlightScanResults => Set<FlightScanResult>();
     public DbSet<IntegrationSetting> IntegrationSettings => Set<IntegrationSetting>();
@@ -26,6 +27,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         builder.Entity<FlightLocation>()
             .HasIndex(location => new { location.Type, location.Code })
+            .IsUnique();
+
+        builder.Entity<FlightLocationIdentifier>()
+            .HasIndex(identifier => new { identifier.LocationType, identifier.LocationCode, identifier.Provider, identifier.IdentifierType })
             .IsUnique();
 
         builder.Entity<PriceAlert>()
