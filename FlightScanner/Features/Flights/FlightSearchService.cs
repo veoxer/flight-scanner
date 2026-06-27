@@ -18,6 +18,11 @@ public sealed class FlightSearchService(
     IHttpClientFactory httpClientFactory,
     ILogger<FlightSearchService> logger) : IFlightSearchService
 {
+    private const int SerpApiMaxOffers = 20;
+    private const int SerpApiMaxRoutePairs = 1;
+    private const string SerpApiGoogleCountry = "ma";
+    private const string SerpApiLanguage = "en";
+
     private static readonly IReadOnlyList<AirlineDirectoryEntry> AirlineDirectory =
     [
         new("American Airlines", "Full service", "North America", "https://www.aa.com/booking/find-flights"),
@@ -170,7 +175,7 @@ public sealed class FlightSearchService(
 
         try
         {
-            var routePairs = await ResolveRoutePairsAsync(query, Math.Clamp(options.SerpApiMaxRoutePairs, 1, 12), cancellationToken);
+            var routePairs = await ResolveRoutePairsAsync(query, SerpApiMaxRoutePairs, cancellationToken);
             var offers = new List<FlightOffer>();
 
             foreach (var (origin, destination) in routePairs)
@@ -198,7 +203,7 @@ public sealed class FlightSearchService(
 
             return offers
                 .OrderBy(offer => offer.Price)
-                .Take(Math.Clamp(options.SerpApiMaxOffers, 1, 50))
+                .Take(SerpApiMaxOffers)
                 .ToList();
         }
         catch (Exception ex)
@@ -303,11 +308,10 @@ public sealed class FlightSearchService(
             ["outbound_date"] = query.DepartFrom.ToString("yyyy-MM-dd"),
             ["adults"] = query.Adults.ToString(),
             ["currency"] = query.Currency,
-            ["hl"] = NormalizeTwoLetterCode(options.SerpApiLanguage, "en"),
-            ["gl"] = NormalizeTwoLetterCode(options.SerpApiGoogleCountry, "ma"),
+            ["hl"] = SerpApiLanguage,
+            ["gl"] = SerpApiGoogleCountry,
             ["travel_class"] = SerpApiTravelClass(query.Cabin),
             ["sort_by"] = "2",
-            ["deep_search"] = options.SerpApiDeepSearch ? "true" : null,
             ["output"] = "json"
         };
 
@@ -429,12 +433,6 @@ public sealed class FlightSearchService(
             CabinClass.First => "4",
             _ => "1"
         };
-    }
-
-    private static string NormalizeTwoLetterCode(string value, string fallback)
-    {
-        var normalized = new string((value ?? "").Trim().Where(char.IsLetter).Take(2).Select(char.ToLowerInvariant).ToArray());
-        return normalized.Length == 2 ? normalized : fallback;
     }
 
     private static string? ReadString(JsonElement element, string propertyName)

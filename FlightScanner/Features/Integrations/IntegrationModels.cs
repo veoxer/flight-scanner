@@ -42,11 +42,6 @@ public sealed class FlightProviderOptions
     public string CurrencyJsonPath { get; set; } = "$.offers[0].currency";
     public string UrlJsonPath { get; set; } = "$.offers[0].url";
     public string SerpApiApiKey { get; set; } = "";
-    public string SerpApiGoogleCountry { get; set; } = "ma";
-    public string SerpApiLanguage { get; set; } = "en";
-    public int SerpApiMaxOffers { get; set; } = 20;
-    public int SerpApiMaxRoutePairs { get; set; } = 1;
-    public bool SerpApiDeepSearch { get; set; }
 }
 
 public sealed class EmailOptions

@@ -282,11 +282,6 @@ public sealed class StartupInitializer(
             {
                 ProviderType = configuration["FLIGHT_PROVIDER_TYPE"] ?? "SerpApi",
                 SerpApiApiKey = configuration["SERPAPI_API_KEY"] ?? "",
-                SerpApiGoogleCountry = configuration["SERPAPI_GOOGLE_COUNTRY"] ?? "ma",
-                SerpApiLanguage = configuration["SERPAPI_LANGUAGE"] ?? "en",
-                SerpApiMaxOffers = int.TryParse(configuration["SERPAPI_MAX_OFFERS"], out var maxOffers) ? maxOffers : 20,
-                SerpApiMaxRoutePairs = int.TryParse(configuration["SERPAPI_MAX_ROUTE_PAIRS"], out var maxRoutePairs) ? maxRoutePairs : 1,
-                SerpApiDeepSearch = bool.TryParse(configuration["SERPAPI_DEEP_SEARCH"], out var deepSearch) && deepSearch,
                 EndpointUrl = configuration["FLIGHT_PROVIDER_URL"] ?? "",
                 HttpMethod = configuration["FLIGHT_PROVIDER_HTTP_METHOD"] ?? "POST",
                 HeadersJson = configuration["FLIGHT_PROVIDER_HEADERS_JSON"] ?? "{}",

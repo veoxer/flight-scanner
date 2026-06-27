@@ -326,6 +326,8 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        NormalizeInputDefaults();
+
         await using var db = await DbFactory.CreateDbContextAsync();
         locations = await db.FlightLocations.AsNoTracking()
             .OrderBy(location => location.Type)
@@ -468,6 +470,15 @@
         Currency = query.Currency;
         TargetMode = NormalizeTargetMode(TargetMode);
         TargetMode2 = NormalizeTargetMode(TargetMode2);
+    }
+
+    private void NormalizeInputDefaults()
+    {
+        Adults = Math.Clamp(Adults, 1, 9);
+        Children = Math.Clamp(Children, 0, 9);
+        Currency = string.IsNullOrWhiteSpace(Currency)
+            ? "MAD"
+            : Currency.Trim().ToUpperInvariant();
     }
 
     private LocationType ParseLocationType(string value, string locationValue)

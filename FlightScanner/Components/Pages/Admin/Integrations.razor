@@ -7,168 +7,52 @@
 
 <h1>@UiText.T("FlightIntegrations")</h1>
 
-@if (!string.IsNullOrWhiteSpace(message))
+@if (saved)
 {
-    <div class="alert alert-success">@message</div>
+    <div class="alert alert-success">@UiText.T("FlightProviderSaved")</div>
 }
 
-<EditForm Model="Input" method="post" OnValidSubmit="SaveAsync" FormName="flight-provider-settings">
-    <DataAnnotationsValidator />
-    <section class="tool-surface">
-        <h2>@UiText.T("FlightProviderApi")</h2>
-        <p class="settings-note">@UiText.T("FlightProviderText")</p>
+<section class="tool-surface">
+    <h2>@UiText.T("FlightProviderApi")</h2>
+    <p class="settings-note">@UiText.T("FlightProviderText")</p>
 
-        <label class="form-label">@UiText.T("Provider")</label>
-        <InputSelect class="form-select" @bind-Value="Input.ProviderType">
-            <option value="SerpApi">SerpApi Google Flights</option>
-            <option value="Custom">Custom HTTP API</option>
-        </InputSelect>
-
-        <div class="settings-grid mt-3">
-            <section>
-                <h2>SerpApi Google Flights</h2>
-                <label class="form-label">@UiText.T("ApiKey")</label>
-                <InputText class="form-control" type="password" @bind-Value="Input.SerpApiApiKey" />
-                <label class="form-label mt-3">@UiText.T("GoogleCountry")</label>
-                <InputText class="form-control" maxlength="2" @bind-Value="Input.SerpApiGoogleCountry" />
-                <label class="form-label mt-3">@UiText.T("Language")</label>
-                <InputText class="form-control" maxlength="2" @bind-Value="Input.SerpApiLanguage" />
-                <label class="form-label mt-3">@UiText.T("MaxOffers")</label>
-                <InputNumber class="form-control" @bind-Value="Input.SerpApiMaxOffers" />
-                <label class="form-label mt-3">@UiText.T("MaxRoutePairs")</label>
-                <InputNumber class="form-control" @bind-Value="Input.SerpApiMaxRoutePairs" />
-                <div class="form-check mt-3">
-                    <InputCheckbox class="form-check-input" @bind-Value="Input.SerpApiDeepSearch" />
-                    <label class="form-check-label">@UiText.T("DeepSearch")</label>
-                </div>
-                <p class="settings-note mt-3">@UiText.T("SerpApiSearchNote")</p>
-            </section>
-
-            <section>
-                <h2>Custom HTTP API</h2>
-                <label class="form-label">@UiText.T("EndpointUrl")</label>
-                <InputText class="form-control" @bind-Value="Input.EndpointUrl" />
-                <label class="form-label mt-3">@UiText.T("HttpMethod")</label>
-                <InputText class="form-control" @bind-Value="Input.HttpMethod" />
-                <label class="form-label mt-3">@UiText.T("HeadersJson")</label>
-                <InputTextArea class="form-control code-box" @bind-Value="Input.HeadersJson" />
-                <label class="form-label mt-3">@UiText.T("BodyTemplate")</label>
-                <InputTextArea class="form-control code-box" @bind-Value="Input.BodyTemplate" />
-                <label class="form-label mt-3">@UiText.T("PriceJsonPath")</label>
-                <InputText class="form-control" @bind-Value="Input.PriceJsonPath" />
-                <label class="form-label mt-3">@UiText.T("CurrencyJsonPath")</label>
-                <InputText class="form-control" @bind-Value="Input.CurrencyJsonPath" />
-                <label class="form-label mt-3">@UiText.T("BookingUrlJsonPath")</label>
-                <InputText class="form-control" @bind-Value="Input.UrlJsonPath" />
-            </section>
+    <form method="post" action="/admin/integrations">
+        <AntiforgeryToken />
+        <div class="form-check mb-3">
+            <input id="serpapi-enabled" class="form-check-input" type="checkbox" name="enabled" value="true" checked="@enabled" />
+            <label class="form-check-label" for="serpapi-enabled">@UiText.T("Enabled")</label>
         </div>
 
-        <div class="form-check mt-3">
-            <InputCheckbox class="form-check-input" @bind-Value="Input.Enabled" />
-            <label class="form-check-label">@UiText.T("Enabled")</label>
-        </div>
+        <label class="form-label" for="serpapi-key">@UiText.T("ApiKey")</label>
+        <input id="serpapi-key" name="apiKey" class="form-control" type="password" value="@apiKey" autocomplete="off" />
+
         <button type="submit" class="btn btn-primary mt-3">@UiText.T("Save")</button>
-    </section>
-</EditForm>
+    </form>
+</section>
 
 @code {
-    private readonly System.Text.Json.JsonSerializerOptions jsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true };
-    private string? message;
+    private bool enabled;
+    private string apiKey = "";
+    private bool saved;
 
-    [SupplyParameterFromForm]
-    private FlightProviderForm Input { get; set; } = default!;
+    [Parameter, SupplyParameterFromQuery(Name = "saved")]
+    public bool Saved { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        Input ??= new();
-        Input = await LoadInputAsync();
-    }
-
-    private async Task<FlightProviderForm> LoadInputAsync()
-    {
+        saved = Saved;
         await using var db = await DbFactory.CreateDbContextAsync();
         var setting = await db.IntegrationSettings.AsNoTracking()
             .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
         if (setting is null)
         {
-            return new FlightProviderForm();
+            return;
         }
 
-        var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(setting.SettingsJson, jsonOptions) ?? new();
-        return FlightProviderForm.FromOptions(options, setting.Enabled);
-    }
-
-    private async Task SaveAsync()
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        Input ??= new();
-        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
-        if (setting is null)
-        {
-            setting = new IntegrationSetting { Kind = IntegrationKind.FlightProvider };
-            db.IntegrationSettings.Add(setting);
-        }
-
-        setting.Enabled = Input.Enabled;
-        setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(Input.ToOptions(), jsonOptions);
-        setting.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
-        message = UiText.T("FlightProviderSaved");
-    }
-
-    public sealed class FlightProviderForm
-    {
-        public bool Enabled { get; set; }
-        public string ProviderType { get; set; } = "SerpApi";
-        public string EndpointUrl { get; set; } = "";
-        public string HttpMethod { get; set; } = "POST";
-        public string HeadersJson { get; set; } = "{}";
-        public string BodyTemplate { get; set; } = "";
-        public string PriceJsonPath { get; set; } = "$.offers[0].price";
-        public string CurrencyJsonPath { get; set; } = "$.offers[0].currency";
-        public string UrlJsonPath { get; set; } = "$.offers[0].url";
-        public string SerpApiApiKey { get; set; } = "";
-        public string SerpApiGoogleCountry { get; set; } = "ma";
-        public string SerpApiLanguage { get; set; } = "en";
-        public int SerpApiMaxOffers { get; set; } = 20;
-        public int SerpApiMaxRoutePairs { get; set; } = 1;
-        public bool SerpApiDeepSearch { get; set; }
-
-        public static FlightProviderForm FromOptions(FlightProviderOptions options, bool enabled) => new()
-        {
-            Enabled = enabled,
-            ProviderType = options.ProviderType.Equals("Amadeus", StringComparison.OrdinalIgnoreCase) ? "SerpApi" : options.ProviderType,
-            EndpointUrl = options.EndpointUrl,
-            HttpMethod = options.HttpMethod,
-            HeadersJson = options.HeadersJson,
-            BodyTemplate = options.BodyTemplate,
-            PriceJsonPath = options.PriceJsonPath,
-            CurrencyJsonPath = options.CurrencyJsonPath,
-            UrlJsonPath = options.UrlJsonPath,
-            SerpApiApiKey = options.SerpApiApiKey,
-            SerpApiGoogleCountry = options.SerpApiGoogleCountry,
-            SerpApiLanguage = options.SerpApiLanguage,
-            SerpApiMaxOffers = options.SerpApiMaxOffers,
-            SerpApiMaxRoutePairs = options.SerpApiMaxRoutePairs,
-            SerpApiDeepSearch = options.SerpApiDeepSearch
-        };
-
-        public FlightProviderOptions ToOptions() => new()
-        {
-            ProviderType = ProviderType,
-            EndpointUrl = EndpointUrl,
-            HttpMethod = HttpMethod,
-            HeadersJson = HeadersJson,
-            BodyTemplate = BodyTemplate,
-            PriceJsonPath = PriceJsonPath,
-            CurrencyJsonPath = CurrencyJsonPath,
-            UrlJsonPath = UrlJsonPath,
-            SerpApiApiKey = SerpApiApiKey,
-            SerpApiGoogleCountry = SerpApiGoogleCountry,
-            SerpApiLanguage = SerpApiLanguage,
-            SerpApiMaxOffers = Math.Clamp(SerpApiMaxOffers, 1, 50),
-            SerpApiMaxRoutePairs = Math.Clamp(SerpApiMaxRoutePairs, 1, 12),
-            SerpApiDeepSearch = SerpApiDeepSearch
-        };
+        var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(
+            setting.SettingsJson,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+        enabled = setting.Enabled;
+        apiKey = options.SerpApiApiKey;
     }
 }

@@ -1,7 +1,5 @@
-@implements IDisposable
 @using FlightScanner.Features.Localization
 
-@inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
 
 <div class="top-row ps-3 navbar navbar-dark">
@@ -59,7 +57,6 @@
                 <div class="nav-item px-3">
                     <form action="/Account/Logout" method="post">
                         <AntiforgeryToken />
-                        <input type="hidden" name="returnUrl" value="@currentUrl" />
                         <button type="submit" class="nav-link">
                             <span class="bi bi-arrow-bar-left-nav-menu" aria-hidden="true"></span> @UiText.T("Logout")
                         </button>
@@ -83,25 +80,11 @@
 </div>
 
 @code {
-    private string? currentUrl;
     private string? displayName;
 
     protected override async Task OnInitializedAsync()
     {
-        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
-        NavigationManager.LocationChanged += OnLocationChanged;
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         displayName = auth.User.FindFirst("display_name")?.Value ?? auth.User.Identity?.Name;
-    }
-
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
-    {
-        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
-        StateHasChanged();
-    }
-
-    public void Dispose()
-    {
-        NavigationManager.LocationChanged -= OnLocationChanged;
     }
 }
