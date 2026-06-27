@@ -912,17 +912,16 @@ h1:focus {
     fill: #082338;
 }
 
+.route-map-countries {
+    filter: drop-shadow(0 12px 18px rgba(2, 6, 23, 0.18));
+    opacity: 0.96;
+}
+
 .route-map-grid {
     fill: none;
     opacity: 0.42;
     stroke: rgba(207, 250, 254, 0.16);
     stroke-width: 1;
-}
-
-.route-map-land {
-    fill: rgba(61, 173, 154, 0.27);
-    stroke: rgba(191, 237, 229, 0.4);
-    stroke-width: 1.4;
 }
 
 .route-map-route {
