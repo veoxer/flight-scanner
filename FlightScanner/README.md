@@ -63,7 +63,7 @@ docker compose up -d --build
 
 For Portainer, create a stack from `docker-compose.yml`, add environment values from `.env.example`, and keep the `flightscanner_keys` volume. That volume persists ASP.NET Core data-protection keys, so auth cookies survive container restarts.
 
-The container listens on port `8080` internally and is bound to `127.0.0.1:18080` on the host. That means it is intentionally reachable only from the host machine and nginx, not from another LAN device through `http://server-lan-ip:18080`. Put nginx in front of it for `flight.veoxer.com` and TLS. A starter nginx server block is in `deploy/nginx.flight.veoxer.com.conf`.
+The container listens on port `8080` internally and is bound to `18080` on the host. That makes it reachable on your LAN, for example `http://192.168.11.120:18080`, while nginx can still proxy `flight.veoxer.com` to `http://127.0.0.1:18080`. A starter nginx server block is in `deploy/nginx.flight.veoxer.com.conf`.
 
 ## Flight Data
 
