@@ -9,9 +9,12 @@ using FlightScanner.Components.Account;
 using FlightScanner.Features.Alerts;
 using FlightScanner.Features.Flights;
 using FlightScanner.Features.Integrations;
+using FlightScanner.Features.Localization;
 using FlightScanner.Features.Setup;
 using FlightScanner.Data;
+using Microsoft.AspNetCore.Localization;
 using Npgsql;
+using System.Globalization;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
@@ -20,6 +23,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddLocalization();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddMemoryCache();
@@ -98,6 +102,14 @@ var app = builder.Build();
 await app.Services.GetRequiredService<StartupInitializer>().InitializeAsync();
 
 // Configure the HTTP request pipeline.
+var supportedCultures = new[] { "en", "fr", "ar" }.Select(culture => new CultureInfo(culture)).ToArray();
+app.UseRequestLocalization(new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new RequestCulture("en"),
+    SupportedCultures = supportedCultures,
+    SupportedUICultures = supportedCultures
+});
+
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
@@ -131,6 +143,76 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
+
+app.MapGet("/culture/set", (string culture, string? returnUrl, HttpContext context) =>
+{
+    var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "en", "fr", "ar" };
+    if (!allowed.Contains(culture))
+    {
+        culture = "en";
+    }
+
+    context.Response.Cookies.Append(
+        CookieRequestCultureProvider.DefaultCookieName,
+        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(culture)),
+        new CookieOptions
+        {
+            HttpOnly = true,
+            IsEssential = true,
+            SameSite = SameSiteMode.Lax,
+            Secure = context.Request.IsHttps,
+            Expires = DateTimeOffset.UtcNow.AddYears(1)
+        });
+
+    var target = string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/')
+        ? "/"
+        : returnUrl;
+    return Results.LocalRedirect(target);
+}).AllowAnonymous();
+
+app.MapGet("/api/locations/suggest", async (
+    string q,
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    CancellationToken cancellationToken) =>
+{
+    q = q.Trim();
+    if (q.Length < 2)
+    {
+        return Results.Ok(Array.Empty<object>());
+    }
+
+    await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+    var lowered = q.ToLowerInvariant();
+    var locations = await db.FlightLocations.AsNoTracking()
+        .Where(location =>
+            location.Code.ToLower().Contains(lowered) ||
+            location.Name.ToLower().Contains(lowered) ||
+            (location.CountryName != null && location.CountryName.ToLower().Contains(lowered)) ||
+            location.Continent.ToLower().Contains(lowered))
+        .Take(80)
+        .ToListAsync(cancellationToken);
+
+    var suggestions = locations
+        .OrderByDescending(location => location.Code.Equals(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+        .ThenBy(location => location.Type)
+        .ThenBy(location => location.Name)
+        .Take(12)
+        .Select(location => new
+        {
+            value = location.Type == LocationType.Airport ? location.Code : location.Name,
+            type = location.Type.ToString(),
+            primary = location.Type == LocationType.Airport ? $"{location.Code} · {location.Name}" : location.Name,
+            secondary = location.Type switch
+            {
+                LocationType.Continent => UiText.T("Continent"),
+                LocationType.Country => $"{location.Continent} · {UiText.T("Country")}",
+                _ => $"{location.CountryName} · {location.Continent}"
+            }
+        });
+
+    return Results.Ok(suggestions);
+}).RequireAuthorization();
 
 app.MapGet("/api/push/public-key", async (IDbContextFactory<ApplicationDbContext> dbFactory) =>
 {

@@ -1,0 +1,27 @@
+@using System.Globalization
+@using FlightScanner.Features.Localization
+@inject NavigationManager Navigation
+
+<div class="language-switcher" aria-label="@UiText.T("Language")">
+    @foreach (var option in Options)
+    {
+        <a class="@(CurrentCulture == option.Code ? "active" : null)" href="@LanguageUrl(option.Code)">@option.Label</a>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<(string Code, string Label)> Options =
+    [
+        ("en", "EN"),
+        ("fr", "FR"),
+        ("ar", "AR")
+    ];
+
+    private static string CurrentCulture => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+
+    private string LanguageUrl(string culture)
+    {
+        var returnUrl = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+        return $"/culture/set?culture={Uri.EscapeDataString(culture)}&returnUrl={Uri.EscapeDataString(returnUrl)}";
+    }
+}

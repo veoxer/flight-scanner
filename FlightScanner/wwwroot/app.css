@@ -496,6 +496,42 @@ h1:focus {
     text-align: start;
 }
 
+.language-switcher {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.25rem;
+    margin-right: auto;
+}
+
+.language-switcher a {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 900;
+    line-height: 1;
+    padding: 0.45rem 0.5rem;
+    text-decoration: none;
+}
+
+.language-switcher a.active {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #fff;
+}
+
+[dir="rtl"] .language-switcher {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+[dir="rtl"] .flight-search-bar,
+[dir="rtl"] .flight-filter-row,
+[dir="rtl"] .result-card,
+[dir="rtl"] .airline-card {
+    direction: rtl;
+}
+
 @media (max-width: 980px) {
     .metrics-grid, .search-grid, .settings-grid, .channel-grid, .result-card, .alert-row, .airline-grid, .airline-card {
         grid-template-columns: 1fr;

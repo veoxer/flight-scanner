@@ -1,181 +1,129 @@
 @page "/search"
-@rendermode InteractiveServer
 @attribute [Authorize]
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
+@using FlightScanner.Features.Localization
 @inject IFlightSearchService FlightSearch
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthStateProvider
 
-<PageTitle>Search</PageTitle>
+<PageTitle>@T("Search")</PageTitle>
 
 <section class="flight-hero">
     <div class="trip-mode-row">
-        <button type="button" class="trip-mode-button">Return</button>
+        <button type="button" class="trip-mode-button">@T("Return")</button>
     </div>
 
-    <EditForm Model="Model" FormName="search-form">
-        <DataAnnotationsValidator />
+    <form method="get" action="/search" class="search-native-form" autocomplete="off">
+        <input type="hidden" name="run" value="true" />
+        <input type="hidden" name="originType" data-location-type="origin" value="@OriginType" />
+        <input type="hidden" name="destinationType" data-location-type="destination" value="@DestinationType" />
+
         <div class="flight-search-bar">
-            <div class="travel-field location-field">
-                <label>From</label>
-                <input class="travel-input"
-                       value="@Model.Origin"
-                       @oninput="OnOriginInput"
-                       @onfocus='() => FocusLocation("origin")'
-                       @onblur="BlurLocationAsync"
-                       autocomplete="off"
-                       placeholder="Country, city or airport" />
-                @if (ShowSuggestions("origin"))
-                {
-                    <div class="location-menu">
-                        @foreach (var location in LocationSuggestions(Model.Origin))
-                        {
-                            <button type="button" class="location-option" @onmousedown="() => SelectOrigin(location)">
-                                <span class="location-kind">@location.Type</span>
-                                <span>
-                                    <strong>@LocationPrimary(location)</strong>
-                                    <small>@LocationSecondary(location)</small>
-                                </span>
-                            </button>
-                        }
-                    </div>
-                }
+            <div class="travel-field location-field" data-location-box="origin">
+                <label for="origin">@T("From")</label>
+                <input id="origin" name="origin" class="travel-input location-input" value="@Origin" data-location-input="origin" autocomplete="off" placeholder="@T("CountryCityAirport")" />
+                <div class="location-menu" data-location-menu="origin" hidden></div>
             </div>
 
-            <div class="travel-field location-field">
-                <label>To</label>
-                <input class="travel-input"
-                       value="@Model.Destination"
-                       @oninput="OnDestinationInput"
-                       @onfocus='() => FocusLocation("destination")'
-                       @onblur="BlurLocationAsync"
-                       autocomplete="off"
-                       placeholder="Country, city or airport" />
-                @if (ShowSuggestions("destination"))
-                {
-                    <div class="location-menu">
-                        @foreach (var location in LocationSuggestions(Model.Destination))
-                        {
-                            <button type="button" class="location-option" @onmousedown="() => SelectDestination(location)">
-                                <span class="location-kind">@location.Type</span>
-                                <span>
-                                    <strong>@LocationPrimary(location)</strong>
-                                    <small>@LocationSecondary(location)</small>
-                                </span>
-                            </button>
-                        }
-                    </div>
-                }
+            <div class="travel-field location-field" data-location-box="destination">
+                <label for="destination">@T("To")</label>
+                <input id="destination" name="destination" class="travel-input location-input" value="@Destination" data-location-input="destination" autocomplete="off" placeholder="@T("CountryCityAirport")" />
+                <div class="location-menu" data-location-menu="destination" hidden></div>
             </div>
 
             <div class="travel-field compact-field">
-                <label>Depart</label>
-                <input class="travel-input date-text-input"
-                       value="@Model.DepartDateText"
-                       @oninput="OnDepartDateInput"
-                       data-flight-date="depart"
-                       inputmode="numeric"
-                       autocomplete="off"
-                       placeholder="dd/mm/yyyy" />
+                <label for="depart">@T("Depart")</label>
+                <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
             </div>
 
             <div class="travel-field compact-field">
-                <label>Return</label>
-                <input class="travel-input date-text-input"
-                       value="@Model.ReturnDateText"
-                       @oninput="OnReturnDateInput"
-                       data-flight-date="return"
-                       inputmode="numeric"
-                       autocomplete="off"
-                       placeholder="dd/mm/yyyy" />
+                <label for="returnDate">@T("Return")</label>
+                <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
             </div>
 
             <div class="travel-field traveller-field">
-                <button type="button" class="traveller-button" @onclick="ToggleTravellerPanel">
-                    <span>Travellers and cabin class</span>
-                    <strong>@TravellerSummary</strong>
+                <button type="button" class="traveller-button" data-traveller-toggle>
+                    <span>@T("TravellersCabin")</span>
+                    <strong data-traveller-summary>@TravellerSummary</strong>
                 </button>
-                @if (showTravellerPanel)
-                {
-                    <div class="traveller-panel">
-                        <label class="form-label">Cabin class</label>
-                        <InputSelect class="form-select" @bind-Value="Model.Cabin">
-                            @foreach (var cabin in Enum.GetValues<CabinClass>())
-                            {
-                                <option value="@cabin">@CabinLabel(cabin)</option>
-                            }
-                        </InputSelect>
+                <div class="traveller-panel" data-traveller-panel hidden>
+                    <label class="form-label" for="cabin">@T("CabinClass")</label>
+                    <select id="cabin" name="cabin" class="form-select" data-cabin-select>
+                        @foreach (var cabin in Enum.GetValues<CabinClass>())
+                        {
+                            <option value="@cabin" selected="@(Cabin == cabin)">@CabinLabel(cabin)</option>
+                        }
+                    </select>
 
-                        <div class="stepper-row">
-                            <div>
-                                <strong>Adults</strong>
-                                <span>Aged 18+</span>
-                            </div>
-                            <div class="stepper">
-                                <button type="button" @onclick="() => ChangeAdults(-1)" disabled="@(Model.Adults <= 1)">−</button>
-                                <span>@Model.Adults</span>
-                                <button type="button" @onclick="() => ChangeAdults(1)">+</button>
-                            </div>
+                    <div class="stepper-row">
+                        <div>
+                            <strong>@T("Adults")</strong>
+                            <span>@T("Aged18")</span>
                         </div>
-
-                        <div class="stepper-row">
-                            <div>
-                                <strong>Children</strong>
-                                <span>Aged 0 to 17</span>
-                            </div>
-                            <div class="stepper">
-                                <button type="button" @onclick="() => ChangeChildren(-1)" disabled="@(Model.Children <= 0)">−</button>
-                                <span>@Model.Children</span>
-                                <button type="button" @onclick="() => ChangeChildren(1)">+</button>
-                            </div>
+                        <div class="stepper">
+                            <button type="button" data-step="adults" data-delta="-1">-</button>
+                            <span data-count="adults">@Adults</span>
+                            <button type="button" data-step="adults" data-delta="1">+</button>
                         </div>
-
-                        <button type="button" class="btn btn-primary w-100" @onclick="ToggleTravellerPanel">Apply</button>
                     </div>
-                }
+
+                    <div class="stepper-row">
+                        <div>
+                            <strong>@T("Children")</strong>
+                            <span>@T("Aged0To17")</span>
+                        </div>
+                        <div class="stepper">
+                            <button type="button" data-step="children" data-delta="-1">-</button>
+                            <span data-count="children">@Children</span>
+                            <button type="button" data-step="children" data-delta="1">+</button>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-primary w-100" data-traveller-apply>@T("Apply")</button>
+                </div>
             </div>
 
-            <button type="button" class="btn btn-primary flight-search-button" @onclick="RunSearchAsync" disabled="@busy">
-                @(busy ? "Searching..." : "Search")
-            </button>
+            <input type="hidden" name="adults" value="@Adults" data-hidden-count="adults" />
+            <input type="hidden" name="children" value="@Children" data-hidden-count="children" />
+            <button type="submit" class="btn btn-primary flight-search-button">@T("Search")</button>
         </div>
 
         <div class="flight-filter-row">
             <label class="filter-check">
-                <InputCheckbox @bind-Value="Model.OriginNearby" />
-                <span>Add nearby airports</span>
+                <input type="checkbox" name="originNearby" value="true" checked="@OriginNearby" />
+                <span>@T("AddNearbyAirports")</span>
             </label>
             <label class="filter-check">
-                <InputCheckbox @bind-Value="Model.DestinationNearby" />
-                <span>Add nearby airports</span>
+                <input type="checkbox" name="destinationNearby" value="true" checked="@DestinationNearby" />
+                <span>@T("AddNearbyAirports")</span>
             </label>
             <label class="filter-check">
-                <InputCheckbox @bind-Value="Model.DirectOnly" />
-                <span>Direct flights</span>
+                <input type="checkbox" name="directOnly" value="true" checked="@DirectOnly" />
+                <span>@T("DirectFlights")</span>
             </label>
             <div class="filter-inline">
-                <label>Currency</label>
+                <label for="currency">@T("Currency")</label>
                 <div class="currency-control">
-                    <span class="currency-glyph" aria-hidden="true">@CurrencySymbol(Model.Currency)</span>
-                    <InputText class="form-control currency-input" list="currency-options" maxlength="3" @bind-Value="Model.Currency" />
+                    <span class="currency-glyph" aria-hidden="true">@CurrencySymbol(Currency)</span>
+                    <input id="currency" name="currency" class="form-control currency-input" list="currency-options" maxlength="3" value="@Currency" />
                 </div>
             </div>
             <div class="filter-inline">
-                <label>Max stops</label>
-                <InputNumber class="form-control" @bind-Value="Model.MaxStops" />
+                <label for="maxStops">@T("MaxStops")</label>
+                <input id="maxStops" name="maxStops" class="form-control" type="number" min="0" max="4" value="@MaxStops" />
             </div>
             <div class="filter-inline">
-                <label>Checked bags</label>
-                <InputNumber class="form-control" @bind-Value="Model.CheckedBags" />
+                <label for="checkedBags">@T("CheckedBags")</label>
+                <input id="checkedBags" name="checkedBags" class="form-control" type="number" min="0" max="9" value="@CheckedBags" />
             </div>
             <div class="filter-inline">
-                <label>Alert target</label>
-                <InputNumber class="form-control" @bind-Value="Model.TargetPrice" />
+                <label for="targetPrice">@T("AlertTarget")</label>
+                <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" />
             </div>
-            <button type="button" class="btn btn-outline-light save-alert-button" @onclick="SaveAlertAsync" disabled="@busy">Save alert</button>
+            <button type="submit" name="saveAlert" value="true" class="btn btn-outline-light save-alert-button">@T("SaveAlert")</button>
         </div>
-    </EditForm>
+    </form>
 </section>
 
 <datalist id="currency-options">
@@ -194,8 +142,8 @@
 {
     <div class="section-heading">
         <div>
-            <h2>Fare results</h2>
-            <p>@offers.Count offer@(offers.Count == 1 ? "" : "s") found for @Model.Origin to @Model.Destination.</p>
+            <h2>@T("FareResults")</h2>
+            <p>@string.Format(CultureInfo.CurrentCulture, T("OffersFound"), offers.Count, Origin, Destination)</p>
         </div>
     </div>
     <div class="results-grid">
@@ -208,16 +156,16 @@
                 </div>
                 <div>
                     <strong>@CurrencySymbol(offer.Currency) @offer.Price.ToString("0.##") @offer.Currency</strong>
-                    <span>@offer.Stops @(offer.Stops == 1 ? "stop" : "stops") · @FormatDuration(offer.Duration)</span>
+                    <span>@offer.Stops @(offer.Stops == 1 ? T("Stop") : T("Stops")) · @FormatDuration(offer.Duration)</span>
                 </div>
                 <div>
                     <strong>@offer.DepartDate.ToString("dd/MM/yyyy")</strong>
-                    <span>@offer.Origin to @offer.Destination</span>
+                    <span>@offer.Origin @T("ToLower") @offer.Destination</span>
                 </div>
                 <div class="row-actions">
                     @if (!string.IsNullOrWhiteSpace(offer.BookingUrl) && offer.BookingUrl != "#")
                     {
-                        <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank" rel="noopener">Open</a>
+                        <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank" rel="noopener">@T("Open")</a>
                     }
                 </div>
             </article>
@@ -229,8 +177,8 @@
 {
     <div class="section-heading">
         <div>
-            <h2>Airline direct search</h2>
-            <p>Regular and low-cost airline booking pages for this route.</p>
+            <h2>@T("AirlineDirectSearch")</h2>
+            <p>@T("AirlineDirectSubtitle")</p>
         </div>
     </div>
     <div class="airline-grid">
@@ -242,14 +190,66 @@
                     <span>@link.Region</span>
                 </div>
                 <span class="carrier-pill">@link.Category</span>
-                <a class="btn btn-sm btn-primary" href="@link.SearchUrl" target="_blank" rel="noopener">Search airline</a>
+                <a class="btn btn-sm btn-primary" href="@link.SearchUrl" target="_blank" rel="noopener">@T("SearchAirline")</a>
             </article>
         }
     </div>
 }
 
 @code {
-    private readonly SearchInput Model = new();
+    [Parameter, SupplyParameterFromQuery(Name = "run")]
+    public bool Run { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "saveAlert")]
+    public bool SaveAlert { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "origin")]
+    public string Origin { get; set; } = "JFK";
+
+    [Parameter, SupplyParameterFromQuery(Name = "destination")]
+    public string Destination { get; set; } = "Europe";
+
+    [Parameter, SupplyParameterFromQuery(Name = "originType")]
+    public string OriginType { get; set; } = nameof(LocationType.Airport);
+
+    [Parameter, SupplyParameterFromQuery(Name = "destinationType")]
+    public string DestinationType { get; set; } = nameof(LocationType.Continent);
+
+    [Parameter, SupplyParameterFromQuery(Name = "depart")]
+    public string Depart { get; set; } = DateTime.Today.AddDays(14).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+    [Parameter, SupplyParameterFromQuery(Name = "returnDate")]
+    public string ReturnDate { get; set; } = DateTime.Today.AddDays(21).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+    [Parameter, SupplyParameterFromQuery(Name = "adults")]
+    public int Adults { get; set; } = 1;
+
+    [Parameter, SupplyParameterFromQuery(Name = "children")]
+    public int Children { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "cabin")]
+    public CabinClass Cabin { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "directOnly")]
+    public bool DirectOnly { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "originNearby")]
+    public bool OriginNearby { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "destinationNearby")]
+    public bool DestinationNearby { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "maxStops")]
+    public int? MaxStops { get; set; } = 1;
+
+    [Parameter, SupplyParameterFromQuery(Name = "checkedBags")]
+    public int CheckedBags { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "currency")]
+    public string Currency { get; set; } = "USD";
+
+    [Parameter, SupplyParameterFromQuery(Name = "targetPrice")]
+    public decimal TargetPrice { get; set; } = 400;
 
     private static readonly IReadOnlyList<CurrencyOption> Currencies =
     [
@@ -278,154 +278,162 @@
     private IReadOnlyList<FlightOffer> offers = [];
     private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
     private List<FlightLocation> locations = [];
-    private bool busy;
-    private bool showTravellerPanel;
-    private string? activeLocationInput;
     private string? message;
+    private string TravellerSummary => $"{Adults + Children} {(Adults + Children == 1 ? T("Traveller") : T("Travellers"))}, {CabinLabel(Cabin)}";
 
-    private string TravellerSummary => $"{Model.Adults + Model.Children} {(Model.Adults + Model.Children == 1 ? "traveller" : "travellers")}, {CabinLabel(Model.Cabin)}";
-
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         locations = await db.FlightLocations.AsNoTracking()
             .OrderBy(location => location.Type)
             .ThenBy(location => location.Name)
+            .Take(2000)
             .ToListAsync();
-    }
 
-    private async Task RunSearchAsync()
-    {
-        if (!PrepareSearch(out var query, out message))
+        if (!Run && !SaveAlert)
         {
-            offers = [];
-            airlineLinks = [];
             return;
         }
 
-        busy = true;
-        message = "Searching fares and preparing airline links...";
+        if (!TryBuildQuery(out var query, out message))
+        {
+            return;
+        }
+
+        NormalizeDisplay(query);
+
+        if (SaveAlert)
+        {
+            await SaveAlertAsync(query);
+        }
+
         offers = await FlightSearch.SearchAsync(query);
         airlineLinks = FlightSearch.GetAirlineSearchLinks(query);
         message = offers.Count == 0
-            ? "No live provider fares returned. Add Amadeus credentials under Admin > Flight API, or use the airline-direct links below."
-            : null;
-        busy = false;
+            ? T("NoLiveProvider")
+            : message;
     }
 
-    private async Task SaveAlertAsync()
+    private async Task SaveAlertAsync(FlightSearchQuery query)
     {
-        if (!PrepareSearch(out _, out message))
-        {
-            return;
-        }
-
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(userId))
         {
-            message = "Login expired. Please sign in again.";
+            message = T("LoginExpired");
             return;
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        db.PriceAlerts.Add(Model.ToAlert(userId));
+        db.PriceAlerts.Add(new PriceAlert
+        {
+            UserId = userId,
+            OriginType = query.OriginType,
+            Origin = query.Origin,
+            DestinationType = query.DestinationType,
+            Destination = query.Destination,
+            DepartFrom = query.DepartFrom,
+            DepartTo = query.DepartTo,
+            ReturnFrom = query.ReturnFrom,
+            ReturnTo = query.ReturnTo,
+            Adults = query.Adults,
+            Children = query.Children,
+            Infants = query.Infants,
+            Cabin = query.Cabin,
+            DirectOnly = query.DirectOnly,
+            MaxStops = query.MaxStops,
+            CheckedBags = query.CheckedBags,
+            Currency = query.Currency,
+            TargetPrice = TargetPrice
+        });
         await db.SaveChangesAsync();
-        message = "Alert saved. The background scanner will check it automatically.";
+        message = T("AlertSaved");
     }
 
-    private bool PrepareSearch(out FlightSearchQuery query, out string? validationMessage)
+    private bool TryBuildQuery(out FlightSearchQuery query, out string? validationMessage)
     {
-        Model.OriginType = InferLocationType(Model.Origin);
-        Model.DestinationType = InferLocationType(Model.Destination);
+        query = default!;
+        validationMessage = null;
 
-        if (!Model.TryBuildQuery(out query, out validationMessage))
+        if (!TryParseDate(Depart, out var departDate))
         {
+            validationMessage = T("DepartDateInvalid");
             return false;
         }
 
-        Model.DepartDateText = query.DepartFrom.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
-        Model.ReturnDateText = query.ReturnFrom?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "";
-        Model.Currency = query.Currency;
+        DateOnly? returnDate = null;
+        if (!string.IsNullOrWhiteSpace(ReturnDate))
+        {
+            if (!TryParseDate(ReturnDate, out var parsedReturnDate))
+            {
+                validationMessage = T("ReturnDateInvalid");
+                return false;
+            }
+
+            returnDate = parsedReturnDate;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (departDate < today)
+        {
+            validationMessage = T("DepartDatePast");
+            return false;
+        }
+
+        if (returnDate is not null && returnDate.Value < today)
+        {
+            validationMessage = T("ReturnDatePast");
+            return false;
+        }
+
+        if (returnDate is not null && returnDate.Value < departDate)
+        {
+            departDate = returnDate.Value;
+            returnDate = null;
+        }
+
+        var originType = ParseLocationType(OriginType, Origin);
+        var destinationType = ParseLocationType(DestinationType, Destination);
+        var currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.Trim().ToUpperInvariant();
+
+        query = new FlightSearchQuery(
+            originType,
+            CleanLocationValue(Origin),
+            destinationType,
+            CleanLocationValue(Destination),
+            departDate,
+            departDate,
+            returnDate,
+            returnDate,
+            Math.Clamp(Adults, 1, 9),
+            Math.Clamp(Children, 0, 9),
+            0,
+            Cabin,
+            DirectOnly,
+            MaxStops,
+            Math.Max(0, CheckedBags),
+            currency);
         return true;
     }
 
-    private void OnOriginInput(ChangeEventArgs args)
+    private void NormalizeDisplay(FlightSearchQuery query)
     {
-        Model.Origin = args.Value?.ToString() ?? "";
-        Model.OriginType = InferLocationType(Model.Origin);
-        activeLocationInput = "origin";
+        OriginType = query.OriginType.ToString();
+        DestinationType = query.DestinationType.ToString();
+        Depart = query.DepartFrom.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        ReturnDate = query.ReturnFrom?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "";
+        Currency = query.Currency;
     }
 
-    private void OnDestinationInput(ChangeEventArgs args)
+    private LocationType ParseLocationType(string value, string locationValue)
     {
-        Model.Destination = args.Value?.ToString() ?? "";
-        Model.DestinationType = InferLocationType(Model.Destination);
-        activeLocationInput = "destination";
-    }
-
-    private void OnDepartDateInput(ChangeEventArgs args)
-    {
-        Model.DepartDateText = args.Value?.ToString() ?? "";
-    }
-
-    private void OnReturnDateInput(ChangeEventArgs args)
-    {
-        Model.ReturnDateText = args.Value?.ToString() ?? "";
-    }
-
-    private void FocusLocation(string inputName)
-    {
-        activeLocationInput = inputName;
-    }
-
-    private async Task BlurLocationAsync()
-    {
-        await Task.Delay(150);
-        activeLocationInput = null;
-    }
-
-    private bool ShowSuggestions(string inputName)
-    {
-        var value = inputName == "origin" ? Model.Origin : Model.Destination;
-        return activeLocationInput == inputName && value.Trim().Length >= 2 && LocationSuggestions(value).Any();
-    }
-
-    private IEnumerable<FlightLocation> LocationSuggestions(string value)
-    {
-        var query = value.Trim();
-        if (query.Length < 2)
+        if (Enum.TryParse<LocationType>(value, ignoreCase: true, out var parsed))
         {
-            return [];
+            return parsed;
         }
 
-        return locations
-            .Where(location => MatchesLocation(location, query))
-            .OrderByDescending(location => location.Code.Equals(query, StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(location => location.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(location => location.Type)
-            .ThenBy(location => location.Name)
-            .Take(12);
-    }
-
-    private void SelectOrigin(FlightLocation location)
-    {
-        Model.Origin = LocationValue(location);
-        Model.OriginType = location.Type;
-        activeLocationInput = null;
-    }
-
-    private void SelectDestination(FlightLocation location)
-    {
-        Model.Destination = LocationValue(location);
-        Model.DestinationType = location.Type;
-        activeLocationInput = null;
-    }
-
-    private LocationType InferLocationType(string value)
-    {
-        var exact = FindBestLocation(value);
-        return exact?.Type ?? (value.Trim().Length == 3 ? LocationType.Airport : LocationType.City);
+        var exact = FindBestLocation(locationValue);
+        return exact?.Type ?? (locationValue.Trim().Length == 3 ? LocationType.Airport : LocationType.City);
     }
 
     private FlightLocation? FindBestLocation(string value)
@@ -443,182 +451,12 @@
             .FirstOrDefault(location => MatchesLocation(location, query));
     }
 
-    private void ToggleTravellerPanel()
-    {
-        showTravellerPanel = !showTravellerPanel;
-    }
-
-    private void ChangeAdults(int delta)
-    {
-        Model.Adults = Math.Clamp(Model.Adults + delta, 1, 9);
-    }
-
-    private void ChangeChildren(int delta)
-    {
-        Model.Children = Math.Clamp(Model.Children + delta, 0, 9);
-    }
-
-    public sealed class SearchInput
-    {
-        public LocationType OriginType { get; set; } = LocationType.Airport;
-
-        [Required, StringLength(120, MinimumLength = 2)]
-        public string Origin { get; set; } = "JFK";
-
-        public LocationType DestinationType { get; set; } = LocationType.Continent;
-
-        [Required, StringLength(120, MinimumLength = 2)]
-        public string Destination { get; set; } = "Europe";
-
-        [Required]
-        public string DepartDateText { get; set; } = DateTime.Today.AddDays(14).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
-
-        public string ReturnDateText { get; set; } = DateTime.Today.AddDays(21).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
-
-        [Range(1, 9)]
-        public int Adults { get; set; } = 1;
-
-        [Range(0, 9)]
-        public int Children { get; set; }
-
-        public CabinClass Cabin { get; set; }
-        public bool DirectOnly { get; set; }
-        public bool OriginNearby { get; set; }
-        public bool DestinationNearby { get; set; }
-
-        [Range(0, 4)]
-        public int? MaxStops { get; set; } = 1;
-
-        [Range(0, 9)]
-        public int CheckedBags { get; set; }
-
-        [Required, StringLength(3, MinimumLength = 3)]
-        public string Currency { get; set; } = "USD";
-
-        [Range(1, 999999)]
-        public decimal TargetPrice { get; set; } = 400;
-
-        public bool TryBuildQuery(out FlightSearchQuery query, out string? validationMessage)
-        {
-            query = default!;
-            validationMessage = null;
-
-            if (!TryParseDate(DepartDateText, out var departDate))
-            {
-                validationMessage = "Enter a depart date as dd/mm/yyyy.";
-                return false;
-            }
-
-            DateOnly? returnDate = null;
-            if (!string.IsNullOrWhiteSpace(ReturnDateText))
-            {
-                if (!TryParseDate(ReturnDateText, out var parsedReturnDate))
-                {
-                    validationMessage = "Enter a return date as dd/mm/yyyy.";
-                    return false;
-                }
-
-                returnDate = parsedReturnDate;
-            }
-
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            if (departDate < today)
-            {
-                validationMessage = "Depart date cannot be earlier than today.";
-                return false;
-            }
-
-            if (returnDate is not null && returnDate.Value < today)
-            {
-                validationMessage = "Return date cannot be earlier than today.";
-                return false;
-            }
-
-            if (returnDate is not null && returnDate.Value < departDate)
-            {
-                departDate = returnDate.Value;
-                returnDate = null;
-            }
-
-            var currency = string.IsNullOrWhiteSpace(Currency) ? "USD" : Currency.Trim().ToUpperInvariant();
-
-            query = new FlightSearchQuery(
-                OriginType,
-                CleanLocationValue(Origin),
-                DestinationType,
-                CleanLocationValue(Destination),
-                departDate,
-                departDate,
-                returnDate,
-                returnDate,
-                Math.Max(1, Adults),
-                Math.Max(0, Children),
-                0,
-                Cabin,
-                DirectOnly,
-                MaxStops,
-                Math.Max(0, CheckedBags),
-                currency);
-            return true;
-        }
-
-        public PriceAlert ToAlert(string userId)
-        {
-            if (!TryBuildQuery(out var query, out _))
-            {
-                throw new InvalidOperationException("Cannot create an alert from invalid search input.");
-            }
-
-            return new PriceAlert
-            {
-                UserId = userId,
-                OriginType = query.OriginType,
-                Origin = query.Origin,
-                DestinationType = query.DestinationType,
-                Destination = query.Destination,
-                DepartFrom = query.DepartFrom,
-                DepartTo = query.DepartTo,
-                ReturnFrom = query.ReturnFrom,
-                ReturnTo = query.ReturnTo,
-                Adults = query.Adults,
-                Children = query.Children,
-                Infants = query.Infants,
-                Cabin = query.Cabin,
-                DirectOnly = query.DirectOnly,
-                MaxStops = query.MaxStops,
-                CheckedBags = query.CheckedBags,
-                Currency = query.Currency,
-                TargetPrice = TargetPrice
-            };
-        }
-    }
-
     private static bool MatchesLocation(FlightLocation location, string value)
     {
         return location.Code.Contains(value, StringComparison.OrdinalIgnoreCase) ||
             location.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
             (location.CountryName?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
             location.Continent.Contains(value, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string LocationValue(FlightLocation location)
-    {
-        return location.Type == LocationType.Airport ? location.Code : location.Name;
-    }
-
-    private static string LocationPrimary(FlightLocation location)
-    {
-        return location.Type == LocationType.Airport ? $"{location.Code} · {location.Name}" : location.Name;
-    }
-
-    private static string LocationSecondary(FlightLocation location)
-    {
-        return location.Type switch
-        {
-            LocationType.Continent => "Continent",
-            LocationType.Country => $"{location.Continent} · Country",
-            _ => $"{location.CountryName} · {location.Continent}"
-        };
     }
 
     private static string CleanLocationValue(string value)
@@ -641,19 +479,21 @@
 
     private static string FormatDuration(TimeSpan duration)
     {
-        return duration <= TimeSpan.Zero ? "duration unavailable" : $"{(int)duration.TotalHours} h {duration.Minutes} m";
+        return duration <= TimeSpan.Zero ? T("DurationUnavailable") : $"{(int)duration.TotalHours} h {duration.Minutes} m";
     }
 
     private static string CabinLabel(CabinClass cabin)
     {
         return cabin switch
         {
-            CabinClass.PremiumEconomy => "Premium economy",
-            CabinClass.Business => "Business",
-            CabinClass.First => "First",
-            _ => "Economy"
+            CabinClass.PremiumEconomy => T("PremiumEconomy"),
+            CabinClass.Business => T("Business"),
+            CabinClass.First => T("First"),
+            _ => T("Economy")
         };
     }
+
+    private static string T(string key) => UiText.T(key);
 
     private sealed record CurrencyOption(string Code, string Symbol, string Name);
 }
