@@ -110,6 +110,12 @@
 
 @if (offers.Count > 0)
 {
+    <div class="section-heading">
+        <div>
+            <h2>Fare estimates</h2>
+            <p>These are local estimates unless a real flight provider API is enabled.</p>
+        </div>
+    </div>
     <div class="results-grid">
         @foreach (var offer in offers)
         {
@@ -126,6 +132,35 @@
                     <strong>@offer.DepartDate.ToString("yyyy-MM-dd")</strong>
                     <span>@offer.Origin to @offer.Destination</span>
                 </div>
+                <div class="row-actions">
+                    @if (!string.IsNullOrWhiteSpace(offer.BookingUrl) && offer.BookingUrl != "#")
+                    {
+                        <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank">Open</a>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@if (airlineLinks.Count > 0)
+{
+    <div class="section-heading">
+        <div>
+            <h2>Airline direct search</h2>
+            <p>Open regular and low-cost airline booking pages for this route.</p>
+        </div>
+    </div>
+    <div class="airline-grid">
+        @foreach (var link in airlineLinks)
+        {
+            <article class="airline-card">
+                <div>
+                    <strong>@link.Airline</strong>
+                    <span>@link.Region</span>
+                </div>
+                <span class="carrier-pill">@link.Category</span>
+                <a class="btn btn-sm btn-primary" href="@link.SearchUrl" target="_blank">Search airline</a>
             </article>
         }
     </div>
@@ -134,6 +169,7 @@
 @code {
     private readonly SearchInput model = new();
     private IReadOnlyList<FlightOffer> offers = [];
+    private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
     private bool busy;
     private string? message;
 
@@ -141,7 +177,9 @@
     {
         busy = true;
         message = null;
-        offers = await FlightSearch.SearchAsync(model.ToQuery());
+        var query = model.ToQuery();
+        offers = await FlightSearch.SearchAsync(query);
+        airlineLinks = FlightSearch.GetAirlineSearchLinks(query);
         busy = false;
     }
 

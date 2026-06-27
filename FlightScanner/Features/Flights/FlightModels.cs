@@ -65,3 +65,10 @@ public sealed record FlightOffer(
     int Stops,
     TimeSpan Duration,
     string BookingUrl);
+
+public sealed record AirlineSearchLink(
+    string Airline,
+    string Category,
+    string Region,
+    string SearchUrl,
+    string Notes);

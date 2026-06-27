@@ -10,6 +10,7 @@ namespace FlightScanner.Features.Flights;
 public interface IFlightSearchService
 {
     Task<IReadOnlyList<FlightOffer>> SearchAsync(FlightSearchQuery query, CancellationToken cancellationToken = default);
+    IReadOnlyList<AirlineSearchLink> GetAirlineSearchLinks(FlightSearchQuery query);
 }
 
 public sealed class FlightSearchService(
@@ -17,6 +18,51 @@ public sealed class FlightSearchService(
     IHttpClientFactory httpClientFactory,
     ILogger<FlightSearchService> logger) : IFlightSearchService
 {
+    private static readonly IReadOnlyList<AirlineDirectoryEntry> AirlineDirectory =
+    [
+        new("American Airlines", "Full service", "North America", "https://www.aa.com/booking/find-flights"),
+        new("Delta Air Lines", "Full service", "North America", "https://www.delta.com/flight-search/book-a-flight"),
+        new("United Airlines", "Full service", "North America", "https://www.united.com/en/us/fsr/choose-flights"),
+        new("Southwest", "Low cost", "North America", "https://www.southwest.com/air/booking/"),
+        new("JetBlue", "Low cost", "North America", "https://www.jetblue.com/booking/flights"),
+        new("Air Canada", "Full service", "North America", "https://www.aircanada.com/ca/en/aco/home/book.html"),
+        new("WestJet", "Low cost", "North America", "https://www.westjet.com/en-ca/flights"),
+        new("British Airways", "Full service", "Europe", "https://www.britishairways.com/travel/book/public/en_us/flightList"),
+        new("Lufthansa", "Full service", "Europe", "https://www.lufthansa.com/us/en/flight-search"),
+        new("Air France", "Full service", "Europe", "https://wwws.airfrance.us/search/open-dates"),
+        new("KLM", "Full service", "Europe", "https://www.klm.com/search/open-dates"),
+        new("Iberia", "Full service", "Europe", "https://www.iberia.com/us/flight-search/"),
+        new("TAP Air Portugal", "Full service", "Europe", "https://www.flytap.com/en-us/booking-information/book-flight"),
+        new("Turkish Airlines", "Full service", "Europe", "https://www.turkishairlines.com/en-int/flights/booking/"),
+        new("Ryanair", "Low cost", "Europe", "https://www.ryanair.com/gb/en"),
+        new("easyJet", "Low cost", "Europe", "https://www.easyjet.com/en"),
+        new("Wizz Air", "Low cost", "Europe", "https://wizzair.com/en-gb/flights"),
+        new("Vueling", "Low cost", "Europe", "https://www.vueling.com/en/book-your-flight/new-search"),
+        new("Transavia", "Low cost", "Europe", "https://www.transavia.com/en-EU/book-a-flight/flights/search/"),
+        new("Royal Air Maroc", "Full service", "Africa", "https://www.royalairmaroc.com/us-en/book-flight"),
+        new("Egyptair", "Full service", "Africa", "https://www.egyptair.com/en/Pages/Booking.aspx"),
+        new("Ethiopian Airlines", "Full service", "Africa", "https://www.ethiopianairlines.com/aa/book"),
+        new("Kenya Airways", "Full service", "Africa", "https://www.kenya-airways.com/en/book-and-manage/book-a-flight/"),
+        new("Air Arabia", "Low cost", "Africa/Asia", "https://www.airarabia.com/en"),
+        new("Emirates", "Full service", "Asia", "https://www.emirates.com/us/english/book/"),
+        new("Qatar Airways", "Full service", "Asia", "https://www.qatarairways.com/en-us/search-results.html"),
+        new("Etihad", "Full service", "Asia", "https://www.etihad.com/en-us/book"),
+        new("Singapore Airlines", "Full service", "Asia", "https://www.singaporeair.com/en_UK/us/plan-travel/local-promotions/book-flights/"),
+        new("Cathay Pacific", "Full service", "Asia", "https://www.cathaypacific.com/cx/en_US/book-a-trip/book-flights.html"),
+        new("ANA", "Full service", "Asia", "https://www.ana.co.jp/en/us/"),
+        new("Japan Airlines", "Full service", "Asia", "https://www.jal.co.jp/ar/en/"),
+        new("AirAsia", "Low cost", "Asia", "https://www.airasia.com/flights/"),
+        new("Scoot", "Low cost", "Asia", "https://www.flyscoot.com/en/booking"),
+        new("IndiGo", "Low cost", "Asia", "https://www.goindigo.in/"),
+        new("Qantas", "Full service", "Oceania", "https://www.qantas.com/us/en/book-a-trip/flights.html"),
+        new("Air New Zealand", "Full service", "Oceania", "https://www.airnewzealand.com/flights"),
+        new("Jetstar", "Low cost", "Oceania", "https://www.jetstar.com/us/en/home"),
+        new("LATAM", "Full service", "South America", "https://www.latamairlines.com/us/en"),
+        new("Avianca", "Full service", "South America", "https://www.avianca.com/en/"),
+        new("GOL", "Low cost", "South America", "https://www.voegol.com.br/en-us"),
+        new("Flybondi", "Low cost", "South America", "https://flybondi.com/ar")
+    ];
+
     public async Task<IReadOnlyList<FlightOffer>> SearchAsync(FlightSearchQuery query, CancellationToken cancellationToken = default)
     {
         var customOffers = await TrySearchCustomProviderAsync(query, cancellationToken);
@@ -26,6 +72,22 @@ public sealed class FlightSearchService(
         }
 
         return GenerateDemoOffers(query).ToList();
+    }
+
+    public IReadOnlyList<AirlineSearchLink> GetAirlineSearchLinks(FlightSearchQuery query)
+    {
+        var routeRegions = new[] { query.Origin, query.Destination, query.OriginType.ToString(), query.DestinationType.ToString() };
+        return AirlineDirectory
+            .OrderByDescending(airline => routeRegions.Any(value => airline.Region.Contains(value, StringComparison.OrdinalIgnoreCase)))
+            .ThenBy(airline => airline.Category)
+            .ThenBy(airline => airline.Airline)
+            .Select(airline => new AirlineSearchLink(
+                airline.Airline,
+                airline.Category,
+                airline.Region,
+                airline.Url,
+                "Opens the airline booking page. Live prices stay on the airline site unless you configure a fare API."))
+            .ToList();
     }
 
     private async Task<IReadOnlyList<FlightOffer>> TrySearchCustomProviderAsync(FlightSearchQuery query, CancellationToken cancellationToken)
@@ -198,4 +260,6 @@ public sealed class FlightSearchService(
     }
 
     private static JsonSerializerOptions JsonOptions() => new(JsonSerializerDefaults.Web);
+
+    private sealed record AirlineDirectoryEntry(string Airline, string Category, string Region, string Url);
 }
