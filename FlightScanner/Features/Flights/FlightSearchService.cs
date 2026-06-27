@@ -262,11 +262,43 @@ public sealed class FlightSearchService(
                 (location.Code.ToLower() == trimmed.ToLower() || location.Name.ToLower().Contains(trimmed.ToLower())))
             .ToListAsync(cancellationToken);
 
-        if (type is LocationType.Airport or LocationType.City)
+        if (type is LocationType.Airport)
         {
             return matches
                 .Select(location => location.Code)
                 .Where(code => code.Length == 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(4)
+                .ToList();
+        }
+
+        if (type is LocationType.City)
+        {
+            var directCityCodes = matches
+                .Select(location => location.Code)
+                .Where(code => code.Length == 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (directCityCodes.Count > 0)
+            {
+                return directCityCodes.Take(4).ToList();
+            }
+
+            var cityNames = matches.Select(match => match.Name).Append(trimmed).ToList();
+            var cityCountryCodes = matches
+                .Select(match => match.CountryCode)
+                .Where(countryCode => !string.IsNullOrWhiteSpace(countryCode))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var airportsForCity = await db.FlightLocations.AsNoTracking()
+                .Where(location => location.Type == LocationType.Airport && location.Code.Length == 3)
+                .ToListAsync(cancellationToken);
+
+            return airportsForCity
+                .Where(airport =>
+                    cityCountryCodes.Count == 0 || cityCountryCodes.Contains(airport.CountryCode ?? "", StringComparer.OrdinalIgnoreCase))
+                .Where(airport => cityNames.Any(city => airport.Name.Contains(city, StringComparison.OrdinalIgnoreCase)))
+                .Select(airport => airport.Code)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(4)
                 .ToList();

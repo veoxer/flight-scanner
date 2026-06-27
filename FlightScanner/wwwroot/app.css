@@ -526,3 +526,327 @@ h1:focus {
         padding: 1.25rem;
     }
 }
+
+.flight-hero {
+    background:
+        linear-gradient(180deg, rgba(8, 39, 67, 0.96), rgba(7, 32, 54, 0.98)),
+        linear-gradient(135deg, rgba(23, 112, 163, 0.22), rgba(15, 118, 110, 0.15));
+    border-radius: 8px;
+    box-shadow: 0 30px 70px rgba(2, 6, 23, 0.2);
+    color: #fff;
+    margin-bottom: 1.25rem;
+    min-height: 21rem;
+    overflow: visible;
+    padding: clamp(1rem, 2vw, 1.6rem);
+    position: relative;
+}
+
+.flight-hero::after {
+    background:
+        linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 52px 52px;
+    bottom: 0;
+    content: "";
+    left: 0;
+    opacity: 0.26;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.flight-hero > form,
+.trip-mode-row {
+    position: relative;
+    z-index: 1;
+}
+
+.trip-mode-row {
+    margin-bottom: 0.5rem;
+}
+
+.trip-mode-button {
+    background: rgba(8, 39, 67, 0.72);
+    border: 1px solid rgba(226, 232, 240, 0.6);
+    border-radius: 8px;
+    color: #fff;
+    font-weight: 800;
+    min-height: 2rem;
+    padding: 0.25rem 0.9rem;
+}
+
+.trip-mode-button::after {
+    content: "⌄";
+    font-size: 0.9rem;
+    margin-left: 0.55rem;
+}
+
+.flight-search-bar {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: minmax(11rem, 1.35fr) minmax(11rem, 1.35fr) minmax(9rem, 0.9fr) minmax(9rem, 0.9fr) minmax(13rem, 1.2fr) minmax(6.25rem, 0.45fr);
+    gap: 4px;
+}
+
+.travel-field {
+    background: #fff;
+    color: var(--ink);
+    min-height: 4.55rem;
+    padding: 0.8rem 1rem 0.7rem;
+    position: relative;
+}
+
+.travel-field:first-child {
+    border-radius: 8px 0 0 8px;
+}
+
+.travel-field label,
+.traveller-button span {
+    color: #5f6b7a;
+    display: block;
+    font-size: 0.86rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+}
+
+.travel-input,
+.traveller-button strong {
+    background: transparent;
+    border: 0;
+    color: #08111f;
+    display: block;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.4;
+    min-width: 0;
+    outline: 0;
+    padding: 0;
+    width: 100%;
+}
+
+.travel-input::placeholder {
+    color: #737d8c;
+}
+
+.traveller-button {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    text-align: left;
+    width: 100%;
+}
+
+.traveller-field {
+    z-index: 5;
+}
+
+.flight-search-button {
+    border-radius: 0 8px 8px 0;
+    box-shadow: none;
+    font-weight: 900;
+    min-height: 4.55rem;
+    padding-inline: 1.25rem;
+}
+
+.location-menu,
+.traveller-panel {
+    background: #fff;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 8px;
+    box-shadow: 0 24px 60px rgba(2, 6, 23, 0.22);
+    color: var(--ink);
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.25rem);
+    z-index: 20;
+}
+
+.location-menu {
+    max-height: 24rem;
+    overflow-y: auto;
+    padding: 0.4rem;
+}
+
+.location-option {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ink);
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0.65rem;
+    text-align: left;
+    width: 100%;
+}
+
+.location-option:hover,
+.location-option:focus {
+    background: #eef8f6;
+    outline: none;
+}
+
+.location-option strong,
+.location-option small {
+    display: block;
+}
+
+.location-option small {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.location-kind {
+    background: #e6f3ff;
+    border: 1px solid #b7d7f3;
+    border-radius: 999px;
+    color: #0f4776;
+    font-size: 0.72rem;
+    font-weight: 900;
+    padding: 0.25rem 0.45rem;
+    text-transform: uppercase;
+}
+
+.traveller-panel {
+    left: auto;
+    padding: 1.5rem;
+    right: 0;
+    top: calc(100% + 0.35rem);
+    width: min(24rem, 88vw);
+}
+
+.stepper-row {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin: 1.35rem 0;
+}
+
+.stepper-row strong,
+.stepper-row span {
+    display: block;
+}
+
+.stepper-row span {
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.stepper {
+    align-items: center;
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: 2.25rem 1.3rem 2.25rem;
+    justify-items: center;
+}
+
+.stepper button {
+    background: #e8edf3;
+    border: 0;
+    border-radius: 6px;
+    color: #0f172a;
+    font-size: 1.35rem;
+    font-weight: 800;
+    height: 2.25rem;
+    line-height: 1;
+    width: 2.25rem;
+}
+
+.stepper button:disabled {
+    color: #a6afbb;
+}
+
+.flight-filter-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem 1.1rem;
+    margin-top: 0.7rem;
+}
+
+.filter-check {
+    align-items: center;
+    color: #fff;
+    display: inline-flex;
+    font-weight: 750;
+    gap: 0.45rem;
+    min-height: 2rem;
+}
+
+.filter-check input {
+    height: 1.1rem;
+    width: 1.1rem;
+}
+
+.filter-inline {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.45rem;
+}
+
+.filter-inline > label {
+    color: #dbeafe;
+    font-size: 0.86rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.filter-inline .form-control {
+    min-height: 2.25rem;
+    width: 7rem;
+}
+
+.filter-inline .currency-control {
+    width: 8.4rem;
+}
+
+.save-alert-button {
+    border-color: rgba(255, 255, 255, 0.7);
+    color: #fff;
+}
+
+@media (max-width: 1180px) {
+    .flight-search-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .travel-field:first-child,
+    .flight-search-button {
+        border-radius: 8px;
+    }
+
+    .flight-search-button {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 720px) {
+    .flight-search-bar {
+        grid-template-columns: 1fr;
+    }
+
+    .flight-search-button {
+        grid-column: auto;
+    }
+
+    .traveller-panel {
+        left: 0;
+        right: auto;
+        width: min(100%, 24rem);
+    }
+
+    .filter-inline,
+    .filter-inline .currency-control,
+    .filter-inline .form-control {
+        width: 100%;
+    }
+
+    .filter-inline {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+}

@@ -26,6 +26,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("flight-provider", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("amadeus", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("whatsapp", client => client.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddHttpClient("location-data", client => client.Timeout = TimeSpan.FromSeconds(90));
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
