@@ -454,7 +454,7 @@
     private CabinClass Cabin => Enum.TryParse<CabinClass>(CabinQuery, ignoreCase: true, out var cabin) ? cabin : CabinClass.Economy;
     private string TravellerSummary => $"{Adults + Children} {(Adults + Children == 1 ? T("Traveller") : T("Travellers"))}, {CabinLabel(Cabin)}";
     private bool ShowSecondTargetFilter => !string.IsNullOrWhiteSpace(TargetPrice2);
-    private bool IsOneWay => TripType.Equals("OneWay", StringComparison.OrdinalIgnoreCase);
+    private bool IsOneWay => string.Equals(TripType, "OneWay", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -609,6 +609,14 @@
 
     private void NormalizeInputDefaults()
     {
+        Origin = string.IsNullOrWhiteSpace(Origin) ? "JFK" : Origin;
+        Destination = string.IsNullOrWhiteSpace(Destination) ? "Europe" : Destination;
+        OriginType = string.IsNullOrWhiteSpace(OriginType) ? nameof(LocationType.Airport) : OriginType;
+        DestinationType = string.IsNullOrWhiteSpace(DestinationType) ? nameof(LocationType.Continent) : DestinationType;
+        Depart = string.IsNullOrWhiteSpace(Depart)
+            ? DateTime.Today.AddDays(14).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
+            : Depart;
+        ReturnDate = ReturnDate ?? "";
         Adults = Math.Clamp(Adults, 1, 9);
         Children = Math.Clamp(Children, 0, 9);
         Currency = string.IsNullOrWhiteSpace(Currency)
