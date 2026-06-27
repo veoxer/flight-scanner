@@ -22,7 +22,7 @@
         </div>
         <div>
             <label class="form-label">From</label>
-            <InputText class="form-control" @bind-Value="model.Origin" placeholder="JFK, Morocco, Europe" />
+            <InputText class="form-control" list="origin-locations" @bind-Value="model.Origin" placeholder="JFK, Casablanca, Morocco, Europe" />
         </div>
         <div>
             <label class="form-label">To scope</label>
@@ -35,23 +35,15 @@
         </div>
         <div>
             <label class="form-label">To</label>
-            <InputText class="form-control" @bind-Value="model.Destination" placeholder="CMN, Japan, Asia" />
+            <InputText class="form-control" list="destination-locations" @bind-Value="model.Destination" placeholder="CMN, Paris, Japan, Asia" />
         </div>
         <div>
-            <label class="form-label">Depart from</label>
-            <InputDate class="form-control" @bind-Value="model.DepartFrom" />
+            <label class="form-label">Depart date</label>
+            <InputDate class="form-control" @bind-Value="model.DepartDate" />
         </div>
         <div>
-            <label class="form-label">Depart to</label>
-            <InputDate class="form-control" @bind-Value="model.DepartTo" />
-        </div>
-        <div>
-            <label class="form-label">Return from</label>
-            <InputDate class="form-control" @bind-Value="model.ReturnFrom" />
-        </div>
-        <div>
-            <label class="form-label">Return to</label>
-            <InputDate class="form-control" @bind-Value="model.ReturnTo" />
+            <label class="form-label">Return date</label>
+            <InputDate class="form-control" @bind-Value="model.ReturnDate" />
         </div>
         <div>
             <label class="form-label">Adults</label>
@@ -102,6 +94,20 @@
         </div>
     </div>
 </EditForm>
+
+<datalist id="origin-locations">
+    @foreach (var location in LocationOptions(model.OriginType))
+    {
+        <option value="@LocationValue(location)" label="@LocationLabel(location)"></option>
+    }
+</datalist>
+
+<datalist id="destination-locations">
+    @foreach (var location in LocationOptions(model.DestinationType))
+    {
+        <option value="@LocationValue(location)" label="@LocationLabel(location)"></option>
+    }
+</datalist>
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
@@ -170,16 +176,29 @@
     private readonly SearchInput model = new();
     private IReadOnlyList<FlightOffer> offers = [];
     private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
+    private List<FlightLocation> locations = [];
     private bool busy;
     private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        locations = await db.FlightLocations.AsNoTracking()
+            .OrderBy(location => location.Type)
+            .ThenBy(location => location.Name)
+            .ToListAsync();
+    }
 
     private async Task RunSearchAsync()
     {
         busy = true;
-        message = null;
+        message = "Searching fares and preparing airline links...";
         var query = model.ToQuery();
         offers = await FlightSearch.SearchAsync(query);
         airlineLinks = FlightSearch.GetAirlineSearchLinks(query);
+        message = offers.Count == 0
+            ? "No live provider fares returned. Add Amadeus credentials under Admin > Flight API, or use the airline-direct links below."
+            : null;
         busy = false;
     }
 
@@ -205,10 +224,8 @@
         public string Origin { get; set; } = "JFK";
         public LocationType DestinationType { get; set; } = LocationType.Continent;
         public string Destination { get; set; } = "Europe";
-        public DateTime DepartFrom { get; set; } = DateTime.Today.AddDays(14);
-        public DateTime DepartTo { get; set; } = DateTime.Today.AddDays(28);
-        public DateTime? ReturnFrom { get; set; }
-        public DateTime? ReturnTo { get; set; }
+        public DateTime DepartDate { get; set; } = DateTime.Today.AddDays(14);
+        public DateTime? ReturnDate { get; set; } = DateTime.Today.AddDays(21);
         public int Adults { get; set; } = 1;
         public int Children { get; set; }
         public int Infants { get; set; }
@@ -224,10 +241,10 @@
             Origin.Trim(),
             DestinationType,
             Destination.Trim(),
-            DateOnly.FromDateTime(DepartFrom),
-            DateOnly.FromDateTime(DepartTo),
-            ReturnFrom is null ? null : DateOnly.FromDateTime(ReturnFrom.Value),
-            ReturnTo is null ? null : DateOnly.FromDateTime(ReturnTo.Value),
+            DateOnly.FromDateTime(DepartDate),
+            DateOnly.FromDateTime(DepartDate),
+            ReturnDate is null ? null : DateOnly.FromDateTime(ReturnDate.Value),
+            ReturnDate is null ? null : DateOnly.FromDateTime(ReturnDate.Value),
             Math.Max(1, Adults),
             Math.Max(0, Children),
             Math.Max(0, Infants),
@@ -262,5 +279,24 @@
                 TargetPrice = TargetPrice
             };
         }
+    }
+
+    private IEnumerable<FlightLocation> LocationOptions(LocationType type)
+    {
+        return locations
+            .Where(location => location.Type == type)
+            .Take(80);
+    }
+
+    private static string LocationValue(FlightLocation location)
+    {
+        return location.Type == LocationType.Airport ? location.Code : location.Name;
+    }
+
+    private static string LocationLabel(FlightLocation location)
+    {
+        return location.Type == LocationType.Airport
+            ? $"{location.Name} ({location.Code}) - {location.CountryName}"
+            : $"{location.Name} - {location.Type}";
     }
 }

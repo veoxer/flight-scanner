@@ -14,7 +14,11 @@
 html, body {
     font-family: Inter, "Segoe UI", Arial, sans-serif;
     color: var(--ink);
-    background: #f4f7f9;
+    background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(37, 99, 235, 0.04) 1px, transparent 1px),
+        #f5f7f9;
+    background-size: 44px 44px;
 }
 
 a, .btn-link {
@@ -29,6 +33,7 @@ a, .btn-link {
     color: #fff;
     background-color: var(--teal);
     border-color: var(--teal);
+    box-shadow: 0 8px 18px rgba(15, 118, 110, 0.16);
 }
 
 .btn-primary:hover {
@@ -44,6 +49,7 @@ a, .btn-link {
 .content {
     padding-top: 1.2rem;
     padding-bottom: 2rem;
+    max-width: 1480px;
 }
 
 h1, h2 {
@@ -79,10 +85,20 @@ h1:focus {
 }
 
 .hero-band {
-    background: linear-gradient(120deg, #e8f5f2 0%, #f8fafc 58%, #fff7ed 100%);
+    background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.08) 1px, transparent 1px),
+        linear-gradient(120deg, #e8f5f2 0%, #f8fafc 58%, #fff7ed 100%);
+    background-size: 28px 28px, auto;
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: clamp(1.5rem, 4vw, 3.5rem);
+    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.08);
+}
+
+.hero-band h1 {
+    font-size: clamp(2.2rem, 5vw, 4.75rem);
+    line-height: 1;
+    margin-bottom: 1rem;
 }
 
 .metrics-grid, .search-grid, .settings-grid, .results-grid {
@@ -116,6 +132,7 @@ h1:focus {
 
 .tool-surface, .setup-shell {
     padding: 1rem;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
 }
 
 .setup-shell {
@@ -128,6 +145,7 @@ h1:focus {
 
 .search-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: end;
 }
 
 .settings-grid {
@@ -201,6 +219,13 @@ h1:focus {
     gap: 1rem;
     padding: 1rem;
     align-items: center;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+    transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.result-card:hover, .alert-row:hover, .airline-card:hover {
+    border-color: #9bd4cc;
+    transform: translateY(-1px);
 }
 
 .airline-grid {
@@ -218,6 +243,8 @@ h1:focus {
     gap: 0.75rem;
     grid-template-columns: minmax(0, 1fr) auto auto;
     padding: 1rem;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+    transition: border-color 0.16s ease, transform 0.16s ease;
 }
 
 .airline-card strong,
@@ -237,6 +264,18 @@ h1:focus {
     color: var(--teal-dark) !important;
     font-weight: 700;
     padding: 0.3rem 0.6rem;
+}
+
+.form-control, .form-select {
+    border-color: #cbd5e1;
+    border-radius: 6px;
+    min-height: 2.65rem;
+}
+
+.form-label {
+    color: #334155;
+    font-size: 0.86rem;
+    font-weight: 700;
 }
 
 .alert-list {

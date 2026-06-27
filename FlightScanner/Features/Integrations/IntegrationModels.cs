@@ -33,6 +33,7 @@ public sealed class PushSubscriptionRecord
 
 public sealed class FlightProviderOptions
 {
+    public string ProviderType { get; set; } = "Amadeus";
     public string EndpointUrl { get; set; } = "";
     public string HttpMethod { get; set; } = "POST";
     public string HeadersJson { get; set; } = "{}";
@@ -40,6 +41,10 @@ public sealed class FlightProviderOptions
     public string PriceJsonPath { get; set; } = "$.offers[0].price";
     public string CurrencyJsonPath { get; set; } = "$.offers[0].currency";
     public string UrlJsonPath { get; set; } = "$.offers[0].url";
+    public string AmadeusEnvironment { get; set; } = "Test";
+    public string AmadeusClientId { get; set; } = "";
+    public string AmadeusClientSecret { get; set; } = "";
+    public int AmadeusMaxOffers { get; set; } = 20;
 }
 
 public sealed class EmailOptions

@@ -34,10 +34,16 @@ public sealed class StartupInitializer(
             db.AppSettings.Add(new AppSetting { Key = "SetupComplete", Value = "false" });
         }
 
-        if (!await db.FlightLocations.AnyAsync(cancellationToken))
-        {
-            db.FlightLocations.AddRange(SeedLocations());
-        }
+        var existingLocations = await db.FlightLocations
+            .Select(location => new { location.Type, location.Code })
+            .ToListAsync(cancellationToken);
+        var existingLocationKeys = existingLocations
+            .Select(location => $"{location.Type}:{location.Code}".ToUpperInvariant())
+            .ToHashSet();
+        var missingLocations = SeedLocations()
+            .Where(location => existingLocationKeys.Add($"{location.Type}:{location.Code}".ToUpperInvariant()))
+            .ToList();
+        db.FlightLocations.AddRange(missingLocations);
 
         foreach (var kind in Enum.GetValues<IntegrationKind>())
         {
@@ -62,6 +68,11 @@ public sealed class StartupInitializer(
         {
             IntegrationKind.FlightProvider => Serialize(new FlightProviderOptions
             {
+                ProviderType = configuration["FLIGHT_PROVIDER_TYPE"] ?? "Amadeus",
+                AmadeusEnvironment = configuration["AMADEUS_ENVIRONMENT"] ?? "Test",
+                AmadeusClientId = configuration["AMADEUS_CLIENT_ID"] ?? "",
+                AmadeusClientSecret = configuration["AMADEUS_CLIENT_SECRET"] ?? "",
+                AmadeusMaxOffers = int.TryParse(configuration["AMADEUS_MAX_OFFERS"], out var maxOffers) ? maxOffers : 20,
                 EndpointUrl = configuration["FLIGHT_PROVIDER_URL"] ?? "",
                 HttpMethod = configuration["FLIGHT_PROVIDER_HTTP_METHOD"] ?? "POST",
                 HeadersJson = configuration["FLIGHT_PROVIDER_HEADERS_JSON"] ?? "{}",
@@ -140,6 +151,37 @@ public sealed class StartupInitializer(
             yield return new FlightLocation
             {
                 Type = LocationType.Airport,
+                Code = code,
+                Name = name,
+                CountryCode = countryCode,
+                CountryName = countryName,
+                Continent = continent
+            };
+        }
+
+        var cities = new[]
+        {
+            ("NYC", "New York", "US", "United States", "North America"),
+            ("LON", "London", "GB", "United Kingdom", "Europe"),
+            ("PAR", "Paris", "FR", "France", "Europe"),
+            ("AMS", "Amsterdam", "NL", "Netherlands", "Europe"),
+            ("CAS", "Casablanca", "MA", "Morocco", "Africa"),
+            ("CAI", "Cairo", "EG", "Egypt", "Africa"),
+            ("JNB", "Johannesburg", "ZA", "South Africa", "Africa"),
+            ("DXB", "Dubai", "AE", "United Arab Emirates", "Asia"),
+            ("SIN", "Singapore", "SG", "Singapore", "Asia"),
+            ("TYO", "Tokyo", "JP", "Japan", "Asia"),
+            ("SYD", "Sydney", "AU", "Australia", "Oceania"),
+            ("AKL", "Auckland", "NZ", "New Zealand", "Oceania"),
+            ("SAO", "Sao Paulo", "BR", "Brazil", "South America"),
+            ("BUE", "Buenos Aires", "AR", "Argentina", "South America")
+        };
+
+        foreach (var (code, name, countryCode, countryName, continent) in cities)
+        {
+            yield return new FlightLocation
+            {
+                Type = LocationType.City,
                 Code = code,
                 Name = name,
                 CountryCode = countryCode,

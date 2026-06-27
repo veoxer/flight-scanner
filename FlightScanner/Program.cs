@@ -22,7 +22,9 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("flight-provider", client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient("amadeus", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("whatsapp", client => client.Timeout = TimeSpan.FromSeconds(20));
 
 builder.Services.AddCascadingAuthenticationState();

@@ -1,9 +1,11 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Xml;
 using FlightScanner.Data;
 using FlightScanner.Features.Integrations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace FlightScanner.Features.Flights;
 
@@ -16,6 +18,7 @@ public interface IFlightSearchService
 public sealed class FlightSearchService(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     IHttpClientFactory httpClientFactory,
+    IMemoryCache memoryCache,
     ILogger<FlightSearchService> logger) : IFlightSearchService
 {
     private static readonly IReadOnlyList<AirlineDirectoryEntry> AirlineDirectory =
@@ -102,6 +105,11 @@ public sealed class FlightSearchService(
         }
 
         var options = JsonSerializer.Deserialize<FlightProviderOptions>(setting.SettingsJson, JsonOptions()) ?? new();
+        if (setting.Enabled && options.ProviderType.Equals("Amadeus", StringComparison.OrdinalIgnoreCase))
+        {
+            return await SearchAmadeusAsync(query, options, cancellationToken);
+        }
+
         if (string.IsNullOrWhiteSpace(options.EndpointUrl) || string.IsNullOrWhiteSpace(options.BodyTemplate))
         {
             return [];
@@ -153,6 +161,251 @@ public sealed class FlightSearchService(
             logger.LogWarning(ex, "Custom flight provider search failed.");
             return [];
         }
+    }
+
+    private async Task<IReadOnlyList<FlightOffer>> SearchAmadeusAsync(FlightSearchQuery query, FlightProviderOptions options, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(options.AmadeusClientId) || string.IsNullOrWhiteSpace(options.AmadeusClientSecret))
+        {
+            return [];
+        }
+
+        try
+        {
+            var baseUrl = GetAmadeusBaseUrl(options);
+            var token = await GetAmadeusTokenAsync(baseUrl, options, cancellationToken);
+            var routePairs = await ResolveRoutePairsAsync(query, cancellationToken);
+            var offers = new List<FlightOffer>();
+
+            foreach (var (origin, destination) in routePairs.Take(8))
+            {
+                var requestUrl = BuildAmadeusFlightOffersUrl(baseUrl, query, origin, destination, Math.Clamp(options.AmadeusMaxOffers, 1, 50));
+                using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                var client = httpClientFactory.CreateClient("amadeus");
+                using var response = await client.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    logger.LogWarning("Amadeus search failed with status {StatusCode}.", response.StatusCode);
+                    continue;
+                }
+
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+                offers.AddRange(ParseAmadeusOffers(document.RootElement, query, origin, destination));
+            }
+
+            return offers
+                .OrderBy(offer => offer.Price)
+                .Take(Math.Clamp(options.AmadeusMaxOffers, 1, 50))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Amadeus flight search failed.");
+            return [];
+        }
+    }
+
+    private async Task<string> GetAmadeusTokenAsync(string baseUrl, FlightProviderOptions options, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"amadeus-token:{baseUrl}:{options.AmadeusClientId}";
+        if (memoryCache.TryGetValue(cacheKey, out string? token) && !string.IsNullOrWhiteSpace(token))
+        {
+            return token;
+        }
+
+        var client = httpClientFactory.CreateClient("amadeus");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/v1/security/oauth2/token")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = options.AmadeusClientId,
+                ["client_secret"] = options.AmadeusClientSecret
+            })
+        };
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        token = document.RootElement.GetProperty("access_token").GetString() ?? "";
+        var expiresIn = document.RootElement.TryGetProperty("expires_in", out var expires) ? expires.GetInt32() : 1800;
+        memoryCache.Set(cacheKey, token, TimeSpan.FromSeconds(Math.Max(60, expiresIn - 60)));
+        return token;
+    }
+
+    private async Task<IReadOnlyList<(string Origin, string Destination)>> ResolveRoutePairsAsync(FlightSearchQuery query, CancellationToken cancellationToken)
+    {
+        var origins = await ResolveLocationCodesAsync(query.OriginType, query.Origin, cancellationToken);
+        var destinations = await ResolveLocationCodesAsync(query.DestinationType, query.Destination, cancellationToken);
+
+        return origins
+            .SelectMany(origin => destinations.Select(destination => (Origin: origin, Destination: destination)))
+            .Where(pair => !pair.Origin.Equals(pair.Destination, StringComparison.OrdinalIgnoreCase))
+            .Take(12)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<string>> ResolveLocationCodesAsync(LocationType type, string value, CancellationToken cancellationToken)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.Length == 3 && trimmed.All(char.IsLetter))
+        {
+            return [trimmed.ToUpperInvariant()];
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var matches = await db.FlightLocations.AsNoTracking()
+            .Where(location =>
+                location.Type == type &&
+                (location.Code.ToLower() == trimmed.ToLower() || location.Name.ToLower().Contains(trimmed.ToLower())))
+            .ToListAsync(cancellationToken);
+
+        if (type is LocationType.Airport or LocationType.City)
+        {
+            return matches
+                .Select(location => location.Code)
+                .Where(code => code.Length == 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(4)
+                .ToList();
+        }
+
+        var scopeNames = matches.Select(match => match.Name).Append(trimmed).ToList();
+        var airports = await db.FlightLocations.AsNoTracking()
+            .Where(location => location.Type == LocationType.Airport)
+            .ToListAsync(cancellationToken);
+
+        return airports
+            .Where(airport => type == LocationType.Continent
+                ? scopeNames.Any(scope => airport.Continent.Equals(scope, StringComparison.OrdinalIgnoreCase) || airport.Code.Equals(scope, StringComparison.OrdinalIgnoreCase))
+                : scopeNames.Any(scope => airport.CountryName == scope || airport.CountryCode == scope || airport.Code == scope))
+            .Select(airport => airport.Code)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+    }
+
+    private static string BuildAmadeusFlightOffersUrl(string baseUrl, FlightSearchQuery query, string origin, string destination, int maxOffers)
+    {
+        var parameters = new Dictionary<string, string?>
+        {
+            ["originLocationCode"] = origin,
+            ["destinationLocationCode"] = destination,
+            ["departureDate"] = query.DepartFrom.ToString("yyyy-MM-dd"),
+            ["adults"] = query.Adults.ToString(),
+            ["currencyCode"] = query.Currency,
+            ["max"] = maxOffers.ToString()
+        };
+
+        if (query.ReturnFrom is { } returnDate)
+        {
+            parameters["returnDate"] = returnDate.ToString("yyyy-MM-dd");
+        }
+
+        if (query.Children > 0)
+        {
+            parameters["children"] = query.Children.ToString();
+        }
+
+        if (query.Infants > 0)
+        {
+            parameters["infants"] = query.Infants.ToString();
+        }
+
+        if (query.DirectOnly)
+        {
+            parameters["nonStop"] = "true";
+        }
+
+        parameters["travelClass"] = query.Cabin switch
+        {
+            CabinClass.PremiumEconomy => "PREMIUM_ECONOMY",
+            CabinClass.Business => "BUSINESS",
+            CabinClass.First => "FIRST",
+            _ => "ECONOMY"
+        };
+
+        var queryString = string.Join("&", parameters
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Value))
+            .Select(parameter => $"{Uri.EscapeDataString(parameter.Key)}={Uri.EscapeDataString(parameter.Value!)}"));
+
+        return $"{baseUrl}/v2/shopping/flight-offers?{queryString}";
+    }
+
+    private static IEnumerable<FlightOffer> ParseAmadeusOffers(JsonElement root, FlightSearchQuery query, string origin, string destination)
+    {
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (var offer in data.EnumerateArray())
+        {
+            var priceElement = offer.GetProperty("price");
+            if (!decimal.TryParse(priceElement.GetProperty("grandTotal").GetString(), out var price))
+            {
+                continue;
+            }
+
+            var currency = priceElement.GetProperty("currency").GetString() ?? query.Currency;
+            var itineraries = offer.GetProperty("itineraries").EnumerateArray().ToList();
+            if (itineraries.Count == 0)
+            {
+                continue;
+            }
+
+            var firstItinerary = itineraries[0];
+            var segments = firstItinerary.ValueKind == JsonValueKind.Object && firstItinerary.TryGetProperty("segments", out var segmentElement)
+                ? segmentElement.EnumerateArray().ToList()
+                : [];
+            var firstSegment = segments.FirstOrDefault();
+            var airline = firstSegment.ValueKind == JsonValueKind.Object && firstSegment.TryGetProperty("carrierCode", out var carrier) ? carrier.GetString() ?? "Airline" : "Airline";
+            var flightNumber = firstSegment.ValueKind == JsonValueKind.Object && firstSegment.TryGetProperty("number", out var number) ? $"{airline}{number.GetString()}" : airline;
+            var stops = Math.Max(0, segments.Count - 1);
+            var duration = firstItinerary.TryGetProperty("duration", out var durationElement)
+                ? ParseIsoDuration(durationElement.GetString())
+                : TimeSpan.Zero;
+
+            yield return new FlightOffer(
+                "Amadeus",
+                airline,
+                flightNumber,
+                origin,
+                destination,
+                query.DepartFrom,
+                query.ReturnFrom,
+                price,
+                currency,
+                stops,
+                duration,
+                "https://www.amadeus.com/en");
+        }
+    }
+
+    private static TimeSpan ParseIsoDuration(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return TimeSpan.Zero;
+        }
+
+        try
+        {
+            return XmlConvert.ToTimeSpan(value);
+        }
+        catch
+        {
+            return TimeSpan.Zero;
+        }
+    }
+
+    private static string GetAmadeusBaseUrl(FlightProviderOptions options)
+    {
+        return options.AmadeusEnvironment.Equals("Production", StringComparison.OrdinalIgnoreCase)
+            ? "https://api.amadeus.com"
+            : "https://test.api.amadeus.com";
     }
 
     private static IEnumerable<FlightOffer> GenerateDemoOffers(FlightSearchQuery query)
