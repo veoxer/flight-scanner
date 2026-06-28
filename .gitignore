@@ -1,5 +1,8 @@
 **/bin/
 **/obj/
+**/.vs/
+*.csproj.user
+**/*.csproj.user
 **/.verify-build/
 **/Data/app.db
 **/Data/app.db-shm

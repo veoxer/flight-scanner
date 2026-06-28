@@ -1,5 +1,16 @@
-const cacheName = "flight-scanner-v1";
-const coreAssets = ["/", "/manifest.webmanifest", "/app.css", "/favicon.png"];
+const cacheName = "flight-scanner-v3";
+const coreAssets = [
+  "/",
+  "/manifest.webmanifest",
+  "/app.css",
+  "/favicon.png",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-maskable-192.png",
+  "/icons/icon-maskable-512.png",
+  "/screenshots/wide.png",
+  "/screenshots/mobile.png"
+];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(coreAssets)));
@@ -27,8 +38,8 @@ self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   event.waitUntil(self.registration.showNotification(data.title || "Flight alert", {
     body: data.body || "A watched fare matched your target.",
-    icon: "/favicon.png",
-    badge: "/favicon.png",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
     data: data.url || "/alerts"
   }));
 });
