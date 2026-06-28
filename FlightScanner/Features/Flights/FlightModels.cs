@@ -60,6 +60,11 @@ public sealed record FlightSearchQuery(
     DateOnly DepartTo,
     DateOnly? ReturnFrom,
     DateOnly? ReturnTo,
+    bool FlexibleDates,
+    int? FlexibleYear,
+    int? FlexibleMonth,
+    DayOfWeek? FlexibleDepartureDay,
+    int? FlexibleStayDays,
     int Adults,
     int Children,
     int Infants,
@@ -67,6 +72,10 @@ public sealed record FlightSearchQuery(
     bool DirectOnly,
     int? MaxStops,
     int CheckedBags,
+    int? OutboundTimeFromHour,
+    int? OutboundTimeToHour,
+    int? ReturnTimeFromHour,
+    int? ReturnTimeToHour,
     string Currency);
 
 public sealed class FlightOffer
@@ -92,7 +101,12 @@ public sealed class FlightOffer
         string? airlineLogoUrl = null,
         string? departureToken = null,
         string? bookingToken = null,
-        string tripType = "One way")
+        string tripType = "One way",
+        string resultKind = "Departure",
+        string? parentDepartureToken = null,
+        decimal? componentPrice = null,
+        decimal? pairedReturnPrice = null,
+        decimal? roundTripTotalPrice = null)
     {
         Provider = provider;
         Airline = airline;
@@ -115,6 +129,11 @@ public sealed class FlightOffer
         DepartureToken = departureToken;
         BookingToken = bookingToken;
         TripType = tripType;
+        ResultKind = resultKind;
+        ParentDepartureToken = parentDepartureToken;
+        ComponentPrice = componentPrice;
+        PairedReturnPrice = pairedReturnPrice;
+        RoundTripTotalPrice = roundTripTotalPrice;
     }
 
     public string Provider { get; }
@@ -138,6 +157,11 @@ public sealed class FlightOffer
     public string? DepartureToken { get; }
     public string? BookingToken { get; }
     public string TripType { get; }
+    public string ResultKind { get; }
+    public string? ParentDepartureToken { get; }
+    public decimal? ComponentPrice { get; }
+    public decimal? PairedReturnPrice { get; }
+    public decimal? RoundTripTotalPrice { get; }
 }
 
 public sealed record FlightItineraryLeg(

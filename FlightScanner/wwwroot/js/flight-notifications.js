@@ -41,16 +41,20 @@
         return "missing-public-key";
       }
 
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
-      });
+      const subscription = await registration.pushManager.getSubscription() ||
+        await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
+        });
 
-      await fetch("/api/push/subscribe", {
+      const subscribeResponse = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subscription)
       });
+      if (!subscribeResponse.ok) {
+        throw new Error("Could not save this browser subscription.");
+      }
       return "subscribed";
     },
     async show(title, body) {
@@ -100,7 +104,38 @@
     });
   }
 
-  document.addEventListener("DOMContentLoaded", bindNotificationButton);
-  document.addEventListener("enhancedload", bindNotificationButton);
-  ensureServiceWorker();
+  function scheduleNotificationBinding() {
+    bindNotificationButton();
+
+    let attempts = 0;
+    const retry = window.setInterval(() => {
+      attempts++;
+      bindNotificationButton();
+      const button = document.querySelector("[data-enable-notifications]");
+      if (attempts >= 20 || (button && button.dataset.boundNotifications === "true")) {
+        window.clearInterval(retry);
+      }
+    }, 150);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scheduleNotificationBinding);
+  } else {
+    scheduleNotificationBinding();
+  }
+
+  window.addEventListener("load", scheduleNotificationBinding);
+  window.addEventListener("pageshow", scheduleNotificationBinding);
+  document.addEventListener("enhancedload", scheduleNotificationBinding);
+
+  if (document.body && "MutationObserver" in window) {
+    let observerTimeout = null;
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(observerTimeout);
+      observerTimeout = window.setTimeout(bindNotificationButton, 50);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  ensureServiceWorker().catch(() => {});
 })();

@@ -32,6 +32,7 @@ builder.Services.AddHttpClient("flight-provider", client => client.Timeout = Tim
 builder.Services.AddHttpClient("serpapi", client => client.Timeout = TimeSpan.FromSeconds(45));
 builder.Services.AddHttpClient("whatsapp", client => client.Timeout = TimeSpan.FromSeconds(20));
 builder.Services.AddHttpClient("location-data", client => client.Timeout = TimeSpan.FromSeconds(90));
+builder.Services.AddHttpClient("wikidata-on-demand", client => client.Timeout = TimeSpan.FromSeconds(20));
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
@@ -146,12 +147,29 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
 
-app.MapGet("/culture/set", (string culture, string? returnUrl, HttpContext context) =>
+app.MapGet("/culture/set", async (
+    string culture,
+    string? returnUrl,
+    HttpContext context,
+    ClaimsPrincipal user,
+    IDbContextFactory<ApplicationDbContext> dbFactory) =>
 {
     var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "en", "fr", "ar" };
     if (!allowed.Contains(culture))
     {
         culture = "en";
+    }
+
+    var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (!string.IsNullOrWhiteSpace(userId))
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var appUser = await db.Users.FirstOrDefaultAsync(item => item.Id == userId);
+        if (appUser is not null)
+        {
+            appUser.PreferredCulture = culture;
+            await db.SaveChangesAsync();
+        }
     }
 
     context.Response.Cookies.Append(
@@ -185,19 +203,44 @@ app.MapGet("/api/locations/suggest", async (
 
     await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
     var lowered = q.ToLowerInvariant();
-    var locations = await db.FlightLocations.AsNoTracking()
+    var regionalLocations = await db.FlightLocations.AsNoTracking()
         .Where(location =>
-            location.Code.ToLower().Contains(lowered) ||
-            location.Name.ToLower().Contains(lowered) ||
-            (location.CountryName != null && location.CountryName.ToLower().Contains(lowered)) ||
-            location.Continent.ToLower().Contains(lowered))
+            (location.Type == LocationType.Country || location.Type == LocationType.Continent) &&
+            (location.Code.ToLower().Contains(lowered) ||
+                location.Name.ToLower().Contains(lowered) ||
+                location.Continent.ToLower().Contains(lowered)))
         .Take(80)
         .ToListAsync(cancellationToken);
+    var otherLocations = await db.FlightLocations.AsNoTracking()
+        .Where(location =>
+            location.Type != LocationType.Country &&
+            location.Type != LocationType.Continent &&
+            (location.Code.ToLower().Contains(lowered) ||
+                location.Name.ToLower().Contains(lowered) ||
+                (location.CountryName != null && location.CountryName.ToLower().Contains(lowered)) ||
+                location.Continent.ToLower().Contains(lowered)))
+        .Take(220)
+        .ToListAsync(cancellationToken);
+    var locations = regionalLocations
+        .Concat(otherLocations)
+        .GroupBy(location => new { location.Type, location.Code })
+        .Select(group => group.First())
+        .ToList();
 
     var suggestions = locations
         .OrderByDescending(location => location.Code.Equals(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => location.Type == LocationType.Country &&
+            location.Name.Equals(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => location.Type == LocationType.Country &&
+            location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => location.Type == LocationType.Continent &&
+            location.Name.Equals(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => location.Type == LocationType.Continent &&
+            location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
         .ThenByDescending(location => location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
-        .ThenBy(location => location.Type)
+        .ThenBy(location => location.Type == LocationType.Country ? 0 :
+            location.Type == LocationType.City ? 1 :
+            location.Type == LocationType.Airport ? 2 : 3)
         .ThenBy(location => location.Name)
         .Take(12)
         .Select(location => new
@@ -228,6 +271,10 @@ app.MapGet("/api/push/public-key", async (IDbContextFactory<ApplicationDbContext
 app.MapGet("/api/flights/return-details", async (
     string departureToken,
     string? currency,
+    string? departureId,
+    string? arrivalId,
+    DateOnly? outboundDate,
+    DateOnly? returnDate,
     IFlightSearchService flightSearch,
     CancellationToken cancellationToken) =>
 {
@@ -236,8 +283,27 @@ app.MapGet("/api/flights/return-details", async (
         return Results.BadRequest();
     }
 
-    var offer = await flightSearch.GetReturnFlightAsync(departureToken, currency ?? "MAD", cancellationToken);
+    var offer = await flightSearch.GetReturnFlightAsync(departureToken, currency ?? "MAD", departureId, arrivalId, outboundDate, returnDate, cancellationToken);
     return offer is null ? Results.NotFound() : Results.Ok(offer);
+}).RequireAuthorization();
+
+app.MapGet("/api/flights/return-options", async (
+    string departureToken,
+    string? currency,
+    string? departureId,
+    string? arrivalId,
+    DateOnly? outboundDate,
+    DateOnly? returnDate,
+    IFlightSearchService flightSearch,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(departureToken) || departureToken.Length > 4096)
+    {
+        return Results.BadRequest();
+    }
+
+    var offers = await flightSearch.GetReturnFlightsAsync(departureToken, currency ?? "MAD", departureId, arrivalId, outboundDate, returnDate, cancellationToken);
+    return Results.Ok(offers);
 }).RequireAuthorization();
 
 app.MapPost("/admin/integrations/save", async (
@@ -247,9 +313,7 @@ app.MapPost("/admin/integrations/save", async (
     var form = await context.Request.ReadFormAsync();
     var enabled = form.TryGetValue("enabled", out var enabledValues) &&
         enabledValues.Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
-    var apiKey = form.TryGetValue("apiKey", out var apiKeyValues)
-        ? apiKeyValues.ToString().Trim()
-        : "";
+    var apiKeys = NormalizeApiKeys(ReadFormValue(form, "apiKeys"));
     var scanIntervalMinutes = form.TryGetValue("alertScanIntervalMinutes", out var intervalValues) &&
         int.TryParse(intervalValues.ToString(), out var parsedInterval)
         ? AlertScanOptions.NormalizeMinutes(parsedInterval)
@@ -267,7 +331,8 @@ app.MapPost("/admin/integrations/save", async (
         setting.SettingsJson,
         new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
     options.ProviderType = "SerpApi";
-    options.SerpApiApiKey = apiKey;
+    options.SerpApiApiKeys = apiKeys;
+    options.SerpApiApiKey = apiKeys.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
     options.AlertScanIntervalMinutes = scanIntervalMinutes;
 
     setting.Enabled = enabled;
@@ -278,6 +343,50 @@ app.MapPost("/admin/integrations/save", async (
     await db.SaveChangesAsync();
 
     return Results.LocalRedirect("/admin/integrations?saved=true");
+}).RequireAuthorization(policy => policy.RequireRole("Admin"))
+  .DisableAntiforgery();
+
+app.MapPost("/admin/reminders/save", async (
+    HttpContext context,
+    IDbContextFactory<ApplicationDbContext> dbFactory) =>
+{
+    var form = await context.Request.ReadFormAsync();
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    var email = new EmailOptions
+    {
+        SmtpHost = ReadFormValue(form, "smtpHost", "smtp.gmail.com"),
+        SmtpPort = int.TryParse(ReadFormValue(form, "smtpPort", "587"), out var smtpPort) ? smtpPort : 587,
+        FromAddress = ReadFormValue(form, "fromAddress"),
+        UserName = ReadFormValue(form, "smtpUserName"),
+        Password = ReadFormValue(form, "smtpPassword"),
+        UseStartTls = HasCheckedValue(form, "smtpUseStartTls")
+    };
+    var whatsApp = new WhatsAppOptions
+    {
+        EndpointUrl = ReadFormValue(form, "whatsAppEndpointUrl"),
+        HttpMethod = ReadFormValue(form, "whatsAppHttpMethod", "POST"),
+        HeadersJson = ReadFormValue(form, "whatsAppHeadersJson", "{}"),
+        To = ReadFormValue(form, "whatsAppTo"),
+        BodyTemplate = ReadFormValue(form, "whatsAppBodyTemplate", "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}")
+    };
+    var webPush = new WebPushOptions
+    {
+        PublicKey = ReadFormValue(form, "vapidPublicKey"),
+        PrivateKey = ReadFormValue(form, "vapidPrivateKey"),
+        Subject = ReadFormValue(form, "vapidSubject", "mailto:admin@example.com")
+    };
+
+    await using var db = await dbFactory.CreateDbContextAsync();
+    await SaveIntegrationSettingAsync(db, IntegrationKind.Email, HasCheckedValue(form, "emailEnabled"), email, jsonOptions);
+    await SaveIntegrationSettingAsync(db, IntegrationKind.WhatsApp, HasCheckedValue(form, "whatsAppEnabled"), whatsApp, jsonOptions);
+    await SaveIntegrationSettingAsync(db, IntegrationKind.WebPush, HasCheckedValue(form, "webPushEnabled"), webPush, jsonOptions);
+    await db.SaveChangesAsync();
+
+    return Results.LocalRedirect("/admin/reminders?saved=true");
 }).RequireAuthorization(policy => policy.RequireRole("Admin"))
   .DisableAntiforgery();
 
@@ -366,6 +475,44 @@ app.MapPost("/api/push/subscribe", async (
 app.MapAdditionalIdentityEndpoints();
 
 app.Run();
+
+static string ReadFormValue(IFormCollection form, string key, string fallback = "")
+{
+    return form.TryGetValue(key, out var value) ? value.ToString().Trim() : fallback;
+}
+
+static bool HasCheckedValue(IFormCollection form, string key)
+{
+    return form.TryGetValue(key, out var values) &&
+        values.Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+}
+
+static string NormalizeApiKeys(string value)
+{
+    return string.Join(
+        "\n",
+        value.Split(['\r', '\n', ',', ';', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal));
+}
+
+static async Task SaveIntegrationSettingAsync<T>(
+    ApplicationDbContext db,
+    IntegrationKind kind,
+    bool enabled,
+    T options,
+    System.Text.Json.JsonSerializerOptions jsonOptions)
+{
+    var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == kind);
+    if (setting is null)
+    {
+        setting = new IntegrationSetting { Kind = kind };
+        db.IntegrationSettings.Add(setting);
+    }
+
+    setting.Enabled = enabled;
+    setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(options, jsonOptions);
+    setting.UpdatedAt = DateTimeOffset.UtcNow;
+}
 
 public sealed record PushSubscriptionInput(string Endpoint, PushSubscriptionKeys Keys);
 public sealed record PushSubscriptionKeys(string P256dh, string Auth);

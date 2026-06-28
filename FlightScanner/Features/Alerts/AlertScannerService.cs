@@ -93,6 +93,11 @@ public sealed class AlertScannerService(
                     alert.DepartTo,
                     alert.ReturnFrom,
                     alert.ReturnTo,
+                    alert.FlexibleDates,
+                    alert.FlexibleYear,
+                    alert.FlexibleMonth,
+                    alert.FlexibleDepartureDay,
+                    alert.FlexibleStayDays,
                     alert.Adults,
                     alert.Children,
                     alert.Infants,
@@ -100,10 +105,17 @@ public sealed class AlertScannerService(
                     alert.DirectOnly,
                     alert.MaxStops,
                     alert.CheckedBags,
+                    alert.OutboundTimeFromHour,
+                    alert.OutboundTimeToHour,
+                    alert.ReturnTimeFromHour,
+                    alert.ReturnTimeToHour,
                     alert.Currency);
 
                 var offers = await search.SearchAsync(query, cancellationToken);
-                var best = offers.OrderBy(offer => offer.Price).FirstOrDefault();
+                var pricedOffers = offers.Where(offer => !offer.ResultKind.Equals("Return", StringComparison.OrdinalIgnoreCase));
+                var best = pricedOffers
+                    .OrderBy(offer => offer.Price)
+                    .FirstOrDefault();
                 alert.LastCheckedAt = DateTimeOffset.UtcNow;
 
                 if (best is null)
@@ -129,7 +141,8 @@ public sealed class AlertScannerService(
                     TriggeredAlert = triggered
                 });
 
-                if (triggered && (alert.LastMatchedAt is null || alert.LastMatchedAt < DateTimeOffset.UtcNow.AddHours(-12)))
+                //if (triggered && (alert.LastMatchedAt is null || alert.LastMatchedAt < DateTimeOffset.UtcNow.AddHours(-12)))
+                if (triggered)
                 {
                     alert.LastMatchedAt = DateTimeOffset.UtcNow;
                     await dispatcher.DispatchPriceMatchAsync(alert, best, cancellationToken);

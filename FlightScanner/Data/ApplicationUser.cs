@@ -6,6 +6,7 @@ namespace FlightScanner.Data;
 public class ApplicationUser : IdentityUser
 {
     public string? DisplayName { get; set; }
+    public string PreferredCulture { get; set; } = "en";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastLoginAt { get; set; }
 }

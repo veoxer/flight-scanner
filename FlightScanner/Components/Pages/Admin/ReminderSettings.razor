@@ -7,33 +7,33 @@
 
 <h1>@UiText.T("ReminderSettings")</h1>
 
-@if (!string.IsNullOrWhiteSpace(message))
+@if (Saved)
 {
-    <div class="alert alert-success">@message</div>
+    <div class="alert alert-success">@UiText.T("ReminderSettingsSaved")</div>
 }
 
-<EditForm Model="formModel" FormName="reminder-settings">
+<form method="post" action="/admin/reminders/save">
     <section class="tool-surface mb-3">
         <h2>@UiText.T("DeliveryChannels")</h2>
         <p class="settings-note">@UiText.T("DeliveryChannelsText")</p>
 
         <div class="channel-grid">
             <label class="channel-toggle">
-                <InputCheckbox class="form-check-input" @bind-Value="emailEnabled" />
+                <input class="form-check-input" type="checkbox" name="emailEnabled" value="true" checked="@emailEnabled" />
                 <span>
                     <strong>Email</strong>
                     <small>@UiText.T("SendSmtp")</small>
                 </span>
             </label>
             <label class="channel-toggle">
-                <InputCheckbox class="form-check-input" @bind-Value="whatsAppEnabled" />
+                <input class="form-check-input" type="checkbox" name="whatsAppEnabled" value="true" checked="@whatsAppEnabled" />
                 <span>
                     <strong>WhatsApp</strong>
                     <small>@UiText.T("SendWhatsapp")</small>
                 </span>
             </label>
             <label class="channel-toggle">
-                <InputCheckbox class="form-check-input" @bind-Value="webPushEnabled" />
+                <input class="form-check-input" type="checkbox" name="webPushEnabled" value="true" checked="@webPushEnabled" />
                 <span>
                     <strong>@UiText.T("MobileNotification")</strong>
                     <small>@UiText.T("UseBrowserPush")</small>
@@ -46,17 +46,17 @@
         <section class="tool-surface">
             <h2>Email SMTP</h2>
             <label class="form-label">@UiText.T("SmtpHost")</label>
-            <InputText class="form-control" @bind-Value="email.SmtpHost" />
+            <input class="form-control" name="smtpHost" value="@email.SmtpHost" />
             <label class="form-label mt-3">@UiText.T("SmtpPort")</label>
-            <InputNumber class="form-control" @bind-Value="email.SmtpPort" />
+            <input class="form-control" name="smtpPort" type="number" min="1" max="65535" value="@email.SmtpPort" />
             <label class="form-label mt-3">@UiText.T("FromAddress")</label>
-            <InputText class="form-control" @bind-Value="email.FromAddress" />
+            <input class="form-control" name="fromAddress" value="@email.FromAddress" />
             <label class="form-label mt-3">@UiText.T("Username")</label>
-            <InputText class="form-control" @bind-Value="email.UserName" />
+            <input class="form-control" name="smtpUserName" value="@email.UserName" />
             <label class="form-label mt-3">@UiText.T("PasswordOrAppPassword")</label>
-            <InputText class="form-control" type="password" @bind-Value="email.Password" />
+            <input class="form-control" name="smtpPassword" type="password" value="@email.Password" />
             <div class="form-check mt-3">
-                <InputCheckbox class="form-check-input" @bind-Value="email.UseStartTls" />
+                <input class="form-check-input" type="checkbox" name="smtpUseStartTls" value="true" checked="@email.UseStartTls" />
                 <label class="form-check-label">@UiText.T("UseTls")</label>
             </div>
         </section>
@@ -64,39 +64,41 @@
         <section class="tool-surface">
             <h2>WhatsApp API</h2>
             <label class="form-label">@UiText.T("EndpointUrl")</label>
-            <InputText class="form-control" @bind-Value="whatsApp.EndpointUrl" />
+            <input class="form-control" name="whatsAppEndpointUrl" value="@whatsApp.EndpointUrl" />
             <label class="form-label mt-3">@UiText.T("HttpMethod")</label>
-            <InputText class="form-control" @bind-Value="whatsApp.HttpMethod" />
+            <input class="form-control" name="whatsAppHttpMethod" value="@whatsApp.HttpMethod" />
             <label class="form-label mt-3">@UiText.T("HeadersJson")</label>
-            <InputTextArea class="form-control code-box" @bind-Value="whatsApp.HeadersJson" />
-            <label class="form-label mt-3">@UiText.T("BodyTemplate")</label>
-            <InputTextArea class="form-control code-box" @bind-Value="whatsApp.BodyTemplate" />
+            <textarea class="form-control code-box" name="whatsAppHeadersJson">@whatsApp.HeadersJson</textarea>
+            <label class="form-label mt-3">@UiText.T("RecipientPhone")</label>
+            <input class="form-control" name="whatsAppTo" value="@whatsApp.To" />
+            <input type="hidden" name="whatsAppBodyTemplate" value="@whatsApp.BodyTemplate" />
         </section>
 
         <section class="tool-surface">
             <h2>@UiText.T("MobileNotification")</h2>
             <label class="form-label">@UiText.T("VapidPublicKey")</label>
-            <InputTextArea class="form-control code-box" @bind-Value="webPush.PublicKey" />
+            <textarea class="form-control code-box" name="vapidPublicKey">@webPush.PublicKey</textarea>
             <label class="form-label mt-3">@UiText.T("VapidPrivateKey")</label>
-            <InputTextArea class="form-control code-box" @bind-Value="webPush.PrivateKey" />
+            <textarea class="form-control code-box" name="vapidPrivateKey">@webPush.PrivateKey</textarea>
             <label class="form-label mt-3">@UiText.T("Subject")</label>
-            <InputText class="form-control" @bind-Value="webPush.Subject" />
+            <input class="form-control" name="vapidSubject" value="@webPush.Subject" />
         </section>
     </div>
 
-    <button type="button" class="btn btn-primary mt-3" @onclick="SaveAsync">@UiText.T("SaveReminderSettings")</button>
-</EditForm>
+    <button type="submit" class="btn btn-primary mt-3">@UiText.T("SaveReminderSettings")</button>
+</form>
 
 @code {
     private readonly System.Text.Json.JsonSerializerOptions jsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true };
-    private readonly object formModel = new();
     private EmailOptions email = new();
     private WhatsAppOptions whatsApp = new();
     private WebPushOptions webPush = new();
     private bool emailEnabled;
     private bool whatsAppEnabled;
     private bool webPushEnabled;
-    private string? message;
+
+    [Parameter, SupplyParameterFromQuery(Name = "saved")]
+    public bool Saved { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -105,16 +107,6 @@
         (email, emailEnabled) = Read<EmailOptions>(settings, IntegrationKind.Email);
         (whatsApp, whatsAppEnabled) = Read<WhatsAppOptions>(settings, IntegrationKind.WhatsApp);
         (webPush, webPushEnabled) = Read<WebPushOptions>(settings, IntegrationKind.WebPush);
-    }
-
-    private async Task SaveAsync()
-    {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        await SaveSettingAsync(db, IntegrationKind.Email, emailEnabled, email);
-        await SaveSettingAsync(db, IntegrationKind.WhatsApp, whatsAppEnabled, whatsApp);
-        await SaveSettingAsync(db, IntegrationKind.WebPush, webPushEnabled, webPush);
-        await db.SaveChangesAsync();
-        message = UiText.T("ReminderSettingsSaved");
     }
 
     private (T Options, bool Enabled) Read<T>(List<IntegrationSetting> settings, IntegrationKind kind) where T : new()
@@ -126,13 +118,5 @@
         }
 
         return (System.Text.Json.JsonSerializer.Deserialize<T>(setting.SettingsJson, jsonOptions) ?? new T(), setting.Enabled);
-    }
-
-    private async Task SaveSettingAsync<T>(ApplicationDbContext db, IntegrationKind kind, bool enabled, T options)
-    {
-        var setting = await db.IntegrationSettings.FirstAsync(item => item.Kind == kind);
-        setting.Enabled = enabled;
-        setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(options, jsonOptions);
-        setting.UpdatedAt = DateTimeOffset.UtcNow;
     }
 }

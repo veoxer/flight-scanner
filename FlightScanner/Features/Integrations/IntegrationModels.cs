@@ -42,6 +42,7 @@ public sealed class FlightProviderOptions
     public string CurrencyJsonPath { get; set; } = "$.offers[0].currency";
     public string UrlJsonPath { get; set; } = "$.offers[0].url";
     public string SerpApiApiKey { get; set; } = "";
+    public string SerpApiApiKeys { get; set; } = "";
     public int AlertScanIntervalMinutes { get; set; } = 180;
 }
 
@@ -60,6 +61,7 @@ public sealed class WhatsAppOptions
     public string EndpointUrl { get; set; } = "";
     public string HttpMethod { get; set; } = "POST";
     public string HeadersJson { get; set; } = "{}";
+    public string To { get; set; } = "";
     public string BodyTemplate { get; set; } = "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}";
 }
 

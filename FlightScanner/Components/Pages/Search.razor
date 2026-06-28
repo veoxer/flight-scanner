@@ -1,5 +1,7 @@
 @page "/search"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize]
+@using System.Collections.Concurrent
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using FlightScanner.Features.Localization
@@ -15,9 +17,9 @@
         <button type="button" class="trip-mode-button @(IsOneWay ? "active" : "")" data-trip-mode-option="OneWay">@T("OneWay")</button>
     </div>
 
-    <form method="get" action="/search" class="search-native-form" autocomplete="off">
-        <input type="hidden" name="run" value="true" />
+    <form method="get" action="/search" class="search-native-form" autocomplete="off" data-enhance="false">
         <input type="hidden" name="tripType" value="@TripType" data-trip-type-value />
+        <input type="hidden" name="dateMode" value="@DateMode" data-date-mode-value />
         <input type="hidden" name="originType" data-location-type="origin" value="@OriginType" />
         <input type="hidden" name="destinationType" data-location-type="destination" value="@DestinationType" />
         <input type="hidden" name="originCode" data-location-code="origin" value="@OriginCode" />
@@ -26,7 +28,7 @@
         <div class="flight-search-bar">
             <div class="travel-field location-field" data-location-box="origin">
                 <label for="origin">@T("From")</label>
-                <input id="origin" name="origin" class="travel-input location-input" value="@Origin" data-location-input="origin" autocomplete="off" placeholder="@T("CountryCityAirport")" />
+                <input id="origin" name="origin" class="travel-input location-input" value="@Origin" data-location-input="origin" autocomplete="off" placeholder="@T("CountryCityAirport")" required />
                 <div class="location-menu" data-location-menu="origin" hidden></div>
             </div>
 
@@ -34,23 +36,139 @@
 
             <div class="travel-field location-field" data-location-box="destination">
                 <label for="destination">@T("To")</label>
-                <input id="destination" name="destination" class="travel-input location-input" value="@Destination" data-location-input="destination" autocomplete="off" placeholder="@T("CountryCityAirport")" />
+                <input id="destination" name="destination" class="travel-input location-input" value="@Destination" data-location-input="destination" autocomplete="off" placeholder="@T("CountryCityAirport")" required />
                 <div class="location-menu" data-location-menu="destination" hidden></div>
             </div>
 
-            <div class="travel-field compact-field">
-                <label for="depart">@T("Depart")</label>
-                <div class="date-picker-field">
-                    <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" />
-                    <button type="button" class="date-picker-button" data-date-toggle="depart" aria-label="@T("Depart")">▦</button>
+            <div class="travel-field date-mode-field">
+                <label>@T("DateMode")</label>
+                <div class="date-mode-toggle" data-date-mode-group>
+                    <button type="button" class="date-mode-button @(!IsFlexibleDates ? "active" : "")" data-date-mode-option="Specific">@T("SpecificDates")</button>
+                    <button type="button" class="date-mode-button @(IsFlexibleDates ? "active" : "")" data-date-mode-option="Flexible">@T("FlexibleDates")</button>
                 </div>
             </div>
 
-            <div class="travel-field compact-field" data-return-field hidden="@IsOneWay">
-                <label for="returnDate">@T("Return")</label>
+            <div class="travel-field compact-field date-time-field" data-specific-date-field hidden="@IsFlexibleDates">
+                <label for="depart">@T("Depart")</label>
                 <div class="date-picker-field">
-                    <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" disabled="@IsOneWay" />
-                    <button type="button" class="date-picker-button" data-date-toggle="return" aria-label="@T("Return")">▦</button>
+                    <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" disabled="@IsFlexibleDates" />
+                    <button type="button" class="date-picker-button" data-date-toggle="depart" aria-label="@T("Depart")" disabled="@IsFlexibleDates">▦</button>
+                </div>
+                <div class="date-time-window">
+                    <label for="outboundTimeFrom">@T("OutboundTime")</label>
+                    <div>
+                        <select id="outboundTimeFrom" name="outboundTimeFrom" class="time-filter-input time-filter-select" disabled="@IsFlexibleDates" data-custom-select data-time-range="outbound-specific" data-time-bound="start">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(OutboundTimeFrom == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                        <span>@T("ToLower")</span>
+                        <select name="outboundTimeTo" class="time-filter-input time-filter-select" disabled="@IsFlexibleDates" data-custom-select data-time-range="outbound-specific" data-time-bound="end">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(OutboundTimeTo == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="travel-field compact-field date-time-field" data-return-field data-specific-date-field hidden="@(IsOneWay || IsFlexibleDates)">
+                <label for="returnDate">@T("ReturnDate")</label>
+                <div class="date-picker-field">
+                    <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" disabled="@(IsOneWay || IsFlexibleDates)" />
+                    <button type="button" class="date-picker-button" data-date-toggle="return" aria-label="@T("ReturnDate")">▦</button>
+                </div>
+                <div class="date-time-window" data-return-time-field>
+                    <label for="returnTimeFrom">@T("ReturnTime")</label>
+                    <div>
+                        <select id="returnTimeFrom" name="returnTimeFrom" class="time-filter-input time-filter-select" disabled="@IsOneWay" data-custom-select data-time-range="return-specific" data-time-bound="start">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(ReturnTimeFrom == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                        <span>@T("ToLower")</span>
+                        <select name="returnTimeTo" class="time-filter-input time-filter-select" disabled="@IsOneWay" data-custom-select data-time-range="return-specific" data-time-bound="end">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(ReturnTimeTo == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="travel-field compact-field" data-flexible-date-field hidden="@(!IsFlexibleDates)">
+                <label for="flexibleMonth">@T("Month")</label>
+                <select id="flexibleMonth" name="flexibleMonth" class="travel-input" data-custom-select data-custom-select-search="true">
+                    @foreach (var month in Enumerable.Range(1, 12))
+                    {
+                        <option value="@month" selected="@(FlexibleMonth == month)">@CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="travel-field compact-field" data-flexible-date-field hidden="@(!IsFlexibleDates)">
+                <label for="flexibleYear">@T("Year")</label>
+                <input id="flexibleYear" name="flexibleYear" class="travel-input" type="number" min="2020" max="2100" value="@FlexibleYear" />
+            </div>
+
+            <div class="travel-field compact-field" data-flexible-date-field hidden="@(!IsFlexibleDates)">
+                <label for="flexibleDepartureDay">@T("Weekday")</label>
+                <select id="flexibleDepartureDay" name="flexibleDepartureDay" class="travel-input" data-custom-select>
+                    @foreach (var day in Weekdays)
+                    {
+                        <option value="@day" selected="@(SelectedFlexibleDepartureDay == day)">@CultureInfo.CurrentCulture.DateTimeFormat.GetDayName(day)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="travel-field compact-field" data-flexible-date-field data-flexible-stay-field hidden="@(!IsFlexibleDates || IsOneWay)">
+                <label for="flexibleStayDays">@T("StayDays")</label>
+                <input id="flexibleStayDays" name="flexibleStayDays" class="travel-input" type="number" min="1" max="365" value="@FlexibleStayDays" disabled="@IsOneWay" />
+            </div>
+
+            <div class="travel-field compact-field time-window-field" data-flexible-date-field hidden="@(!IsFlexibleDates)">
+                <label>@T("OutboundTime")</label>
+                <div class="date-time-window standalone-time-window">
+                    <div>
+                        <select name="outboundTimeFrom" class="time-filter-input time-filter-select" disabled="@(!IsFlexibleDates)" data-custom-select data-time-range="outbound-flexible" data-time-bound="start">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(OutboundTimeFrom == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                        <span>@T("ToLower")</span>
+                        <select name="outboundTimeTo" class="time-filter-input time-filter-select" disabled="@(!IsFlexibleDates)" data-custom-select data-time-range="outbound-flexible" data-time-bound="end">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(OutboundTimeTo == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="travel-field compact-field time-window-field" data-flexible-date-field data-flexible-return-only-field hidden="@(!IsFlexibleDates || IsOneWay)">
+                <label>@T("ReturnTime")</label>
+                <div class="date-time-window standalone-time-window">
+                    <div>
+                        <select name="returnTimeFrom" class="time-filter-input time-filter-select" disabled="@(!IsFlexibleDates || IsOneWay)" data-custom-select data-time-range="return-flexible" data-time-bound="start">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(ReturnTimeFrom == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                        <span>@T("ToLower")</span>
+                        <select name="returnTimeTo" class="time-filter-input time-filter-select" disabled="@(!IsFlexibleDates || IsOneWay)" data-custom-select data-time-range="return-flexible" data-time-bound="end">
+                            @foreach (var option in TimeOptions)
+                            {
+                                <option value="@option.Value" selected="@(ReturnTimeTo == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -61,7 +179,7 @@
                 </button>
                 <div class="traveller-panel" data-traveller-panel hidden>
                     <label class="form-label" for="cabin">@T("CabinClass")</label>
-                    <select id="cabin" name="cabin" class="form-select" data-cabin-select>
+                    <select id="cabin" name="cabin" class="form-select" data-cabin-select data-custom-select>
                         @foreach (var cabin in Enum.GetValues<CabinClass>())
                         {
                             <option value="@cabin" selected="@(Cabin == cabin)">@CabinLabel(cabin)</option>
@@ -98,7 +216,7 @@
 
             <input type="hidden" name="adults" value="@Adults" data-hidden-count="adults" />
             <input type="hidden" name="children" value="@Children" data-hidden-count="children" />
-            <button type="submit" class="btn btn-primary flight-search-button">@T("Search")</button>
+            <button type="submit" name="run" value="true" class="btn btn-primary flight-search-button">@T("Search")</button>
         </div>
 
         <div class="flight-filter-row">
@@ -136,31 +254,43 @@
                 <label for="checkedBags">@T("CheckedBags")</label>
                 <input id="checkedBags" name="checkedBags" class="form-control" type="number" min="0" max="9" value="@CheckedBags" />
             </div>
-            <div class="filter-inline alert-target-filter">
+            <div class="filter-inline alert-target-filter @(!CanSaveAlert ? "alert-target-filter-disabled" : "")" aria-disabled="@(!CanSaveAlert)">
                 <label>@T("AlertTarget")</label>
-                <div class="target-filter-stack" data-alert-targets>
+                <div class="target-filter-stack" data-alert-targets data-alert-target-required="@T("AlertTargetRequired")">
+                    <input type="hidden" name="targetFilterCount" value="@VisibleTargetFilterCount" data-target-filter-count />
+                    @if (!CanSaveAlert)
+                    {
+                        <span class="alert-target-hint">@AlertSaveHint</span>
+                    }
                     <div class="target-control" data-target-filter>
-                        <select name="targetMode" class="form-select" aria-label="@T("AlertTargetMode")">
+                        <select name="targetMode" class="form-select" aria-label="@T("AlertTargetMode")" disabled="@(!CanSaveAlert)" data-custom-select>
                             <option value="Max" selected="@(TargetMode == "Max")">@T("MaxFare")</option>
                             <option value="Min" selected="@(TargetMode == "Min")">@T("MinFare")</option>
                         </select>
-                        <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" />
-                        <button type="button" class="target-remove-button" data-target-remove aria-label="@T("RemoveFareFilter")">×</button>
+                        <input id="targetPrice" name="targetPrice" class="form-control" type="number" min="1" step="1" value="@TargetPrice" disabled="@(!CanSaveAlert)" />
+                        <button type="button" class="target-remove-button" data-target-remove aria-label="@T("RemoveFareFilter")" disabled="@(!CanSaveAlert)">×</button>
                     </div>
                     <div class="target-control" data-target-filter hidden="@(!ShowSecondTargetFilter)">
-                        <select name="targetMode2" class="form-select" aria-label="@T("AlertTargetMode")">
+                        <select name="targetMode2" class="form-select" aria-label="@T("AlertTargetMode")" disabled="@(!CanSaveAlert)" data-custom-select>
                             <option value="Max" selected="@(TargetMode2 == "Max")">@T("MaxFare")</option>
                             <option value="Min" selected="@(TargetMode2 == "Min")">@T("MinFare")</option>
                         </select>
-                        <input name="targetPrice2" class="form-control" type="number" min="1" step="1" value="@TargetPrice2" />
-                        <button type="button" class="target-remove-button" data-target-remove aria-label="@T("RemoveFareFilter")">×</button>
+                        <input name="targetPrice2" class="form-control" type="number" min="1" step="1" value="@TargetPrice2" disabled="@(!CanSaveAlert)" />
+                        <button type="button" class="target-remove-button" data-target-remove aria-label="@T("RemoveFareFilter")" disabled="@(!CanSaveAlert)">×</button>
                     </div>
-                    <button type="button" class="target-add-button" data-target-add>@T("AddFareFilter")</button>
+                    <button type="button" class="target-add-button" data-target-add disabled="@(!CanSaveAlert)">@T("AddFareFilter")</button>
                 </div>
             </div>
-            <button type="submit" name="saveAlert" value="true" class="btn btn-outline-light save-alert-button">@T("SaveAlert")</button>
+            <button type="submit" name="saveAlert" value="true" class="btn btn-outline-light save-alert-button" disabled="@(!CanSaveAlert)">@T("SaveAlert")</button>
         </div>
     </form>
+
+    <div class="search-loading-overlay" data-search-loading hidden>
+        <div class="search-loading-panel">
+            <span class="search-loading-spinner" aria-hidden="true"></span>
+            <strong>@T("SearchingFlights")</strong>
+        </div>
+    </div>
 </section>
 
 @if (!string.IsNullOrWhiteSpace(message))
@@ -168,164 +298,205 @@
     <div class="alert alert-info mt-3">@message</div>
 }
 
-@if (offers.Count > 0)
-{
-    <div class="section-heading">
-        <div>
-            <h2>@T("FareResults")</h2>
-            <p>@string.Format(CultureInfo.CurrentCulture, T("OffersFound"), offers.Count, Origin, Destination)</p>
-        </div>
-    </div>
-    <div class="results-grid">
-        @foreach (var offer in offers)
-        {
-            <details class="result-card itinerary-result"
-                     data-flight-result
-                     data-return-token="@offer.DepartureToken"
-                     data-currency="@offer.Currency"
-                     data-return-title="@T("ReturnFlight")"
-                     data-loading-text="@T("LoadingReturnFlight")"
-                     data-error-text="@T("ReturnFlightUnavailable")"
-                     data-duration-label="@T("TravelTime")"
-                     data-layover-label="@T("Layover")"
-                     data-emissions-label="@T("EmissionsEstimate")"
-                     data-co2-label="@T("KgCo2e")">
-                <summary class="result-summary">
-                    <div class="airline-identity">
-                        <span class="airline-logo-fallback">@AirlineInitials(offer.Airline)</span>
-                        <img class="airline-logo" src="@AirlineLogoUrl(offer)" alt="" loading="lazy" onload="this.previousElementSibling.hidden=true" onerror="this.hidden=true" />
-                        <span>
-                            <strong>@offer.Airline @offer.FlightNumber</strong>
-                            <span>@offer.TripType · @offer.Provider</span>
-                        </span>
-                    </div>
-                    <div>
-                        <strong>@CurrencySymbol(offer.Currency) @offer.Price.ToString("0.##") @offer.Currency</strong>
-                        <span>@(offer.ReturnDate is null ? T("OneWay") : T("Return"))</span>
-                    </div>
-                    <div>
-                        <strong>@offer.DepartDate.ToString("dd/MM/yyyy")</strong>
-                        <span>@offer.Origin @T("ToLower") @offer.Destination</span>
-                    </div>
-                    <div>
-                        <strong>@(offer.CarbonEmissionsGrams is { } grams ? $"{FormatKilograms(grams)} {T("KgCo2e")}" : T("Details"))</strong>
-                        <span>@offer.Stops @(offer.Stops == 1 ? T("Stop") : T("Stops")) · @FormatDuration(offer.Duration)</span>
-                    </div>
-                    <span class="expand-chevron" aria-hidden="true">⌄</span>
-                </summary>
-
-                <div class="itinerary-details">
-                    @foreach (var leg in offer.ItineraryLegs)
-                    {
-                        <section class="flight-leg">
-                            <div class="flight-leg-heading">
-                                <div>
-                                    <strong>@LegTitle(leg.Kind)</strong>
-                                    <span>@(leg.Date?.ToString("ddd, dd MMM", CultureInfo.CurrentCulture) ?? T("DateUnavailable"))</span>
-                                </div>
-                                <span>@T("TravelTime"): @FormatDuration(leg.Duration)</span>
+<div data-results-cache-target>
+    @if (offers.Count > 0)
+    {
+        <div data-results-cache-source>
+            <div class="section-heading">
+                <div>
+                    <h2>@T("FareResults")</h2>
+                    <p>@string.Format(CultureInfo.CurrentCulture, T("OffersFound"), offers.Count, Origin, Destination)</p>
+                </div>
+                <div class="result-pagination-controls" data-result-pagination>
+                    <label for="resultPageSize">@T("PageSize")</label>
+                    <select id="resultPageSize" class="form-select" data-results-page-size data-custom-select>
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="all">@T("All")</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-results-prev>@T("Previous")</button>
+                    <span data-results-page-status></span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-results-next>@T("Next")</button>
+                </div>
+            </div>
+            <div class="results-grid" data-results-grid>
+                @foreach (var offer in offers)
+                {
+                    <details class="result-card itinerary-result"
+                             data-flight-result
+                             data-result-kind="@offer.ResultKind"
+                             data-return-token="@offer.DepartureToken"
+                             data-return-departure-id="@offer.Origin"
+                             data-return-arrival-id="@offer.Destination"
+                             data-return-outbound-date="@offer.DepartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                             data-return-date="@FormatDateAttribute(offer.ReturnDate)"
+                             data-currency="@offer.Currency"
+                             data-return-title="@T("ReturnFlight")"
+                             data-loading-text="@T("LoadingReturnFlight")"
+                             data-error-text="@T("ReturnFlightUnavailable")"
+                             data-price-symbol="@CurrencySymbol(offer.Currency)"
+                             data-duration-label="@T("TravelTime")"
+                             data-layover-label="@T("Layover")"
+                             data-emissions-label="@T("EmissionsEstimate")"
+                             data-co2-label="@T("KgCo2e")">
+                        <summary class="result-summary">
+                            <div class="airline-identity">
+                                <span class="airline-logo-fallback">@AirlineInitials(offer.Airline)</span>
+                                <img class="airline-logo" src="@AirlineLogoUrl(offer)" alt="" loading="lazy" onload="this.previousElementSibling.hidden=true" onerror="this.hidden=true" />
+                                <span>
+                                    <strong>@offer.Airline @offer.FlightNumber</strong>
+                                    <span>@offer.TripType · @offer.Provider</span>
+                                </span>
                             </div>
+                            <div>
+                                <strong>@CurrencySymbol(offer.Currency) @offer.Price.ToString("0.##") @offer.Currency</strong>
+                                <span>@PriceSubtitle(offer)</span>
+                            </div>
+                            <div>
+                                <strong>@offer.DepartDate.ToString("dd/MM/yyyy")</strong>
+                                <span>@offer.Origin @T("ToLower") @offer.Destination</span>
+                            </div>
+                            <div>
+                                <strong>@(offer.CarbonEmissionsGrams is { } grams ? $"{FormatKilograms(grams)} {T("KgCo2e")}" : T("Details"))</strong>
+                                <span>@offer.Stops @(offer.Stops == 1 ? T("Stop") : T("Stops")) · @FormatDuration(offer.Duration)</span>
+                            </div>
+                            <span class="expand-chevron" aria-hidden="true">⌄</span>
+                        </summary>
 
-                            <div class="flight-timeline">
-                                @for (var segmentIndex = 0; segmentIndex < leg.Segments.Count; segmentIndex++)
-                                {
-                                    var segment = leg.Segments[segmentIndex];
-                                    <div class="flight-segment">
-                                        <div class="timeline-rail">
-                                            <span></span>
-                                            <i></i>
-                                            <span></span>
+                        <div class="itinerary-details">
+                            @foreach (var leg in offer.ItineraryLegs)
+                            {
+                                <section class="flight-leg">
+                                    <div class="flight-leg-heading">
+                                        <div>
+                                            <strong>@LegTitle(leg.Kind)</strong>
+                                            <span>@(leg.Date?.ToString("ddd, dd MMM", CultureInfo.CurrentCulture) ?? T("DateUnavailable"))</span>
                                         </div>
-                                        <div class="segment-main">
-                                            <div class="segment-airports">
-                                                <strong>@FormatTime(segment.DepartureAirport.Time)</strong>
-                                                <span>@AirportLabel(segment.DepartureAirport)</span>
-                                                <strong>@FormatTime(segment.ArrivalAirport.Time)</strong>
-                                                <span>@AirportLabel(segment.ArrivalAirport)</span>
-                                            </div>
-                                            <div class="segment-meta">
-                                                <span>@FormatDuration(segment.Duration)</span>
-                                                <span>@segment.Airline</span>
-                                                @if (!string.IsNullOrWhiteSpace(segment.TravelClass))
-                                                {
-                                                    <span>@segment.TravelClass</span>
-                                                }
-                                                @if (!string.IsNullOrWhiteSpace(segment.Airplane))
-                                                {
-                                                    <span>@segment.Airplane</span>
-                                                }
-                                                @if (!string.IsNullOrWhiteSpace(segment.FlightNumber))
-                                                {
-                                                    <span>@segment.FlightNumber</span>
-                                                }
-                                            </div>
-                                            @if (segment.Extensions.Count > 0)
-                                            {
-                                                <div class="flight-tags">
-                                                    @foreach (var item in segment.Extensions.Take(4))
+                                        <span>@T("TravelTime"): @FormatDuration(leg.Duration)</span>
+                                    </div>
+
+                                    <div class="flight-timeline">
+                                        @for (var segmentIndex = 0; segmentIndex < leg.Segments.Count; segmentIndex++)
+                                        {
+                                            var segment = leg.Segments[segmentIndex];
+                                            <div class="flight-segment">
+                                                <div class="timeline-rail">
+                                                    <span></span>
+                                                    <i></i>
+                                                    <span></span>
+                                                </div>
+                                                <div class="segment-main">
+                                                    <div class="segment-airports">
+                                                        <strong>@FormatTime(segment.DepartureAirport.Time)</strong>
+                                                        <span>@AirportLabel(segment.DepartureAirport)</span>
+                                                        <strong>@FormatTime(segment.ArrivalAirport.Time)</strong>
+                                                        <span>@AirportLabel(segment.ArrivalAirport)</span>
+                                                    </div>
+                                                    <div class="segment-meta">
+                                                        <span>@FormatDuration(segment.Duration)</span>
+                                                        <span>@segment.Airline</span>
+                                                        @if (!string.IsNullOrWhiteSpace(segment.TravelClass))
+                                                        {
+                                                            <span>@segment.TravelClass</span>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(segment.Airplane))
+                                                        {
+                                                            <span>@segment.Airplane</span>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(segment.FlightNumber))
+                                                        {
+                                                            <span>@segment.FlightNumber</span>
+                                                        }
+                                                    </div>
+                                                    @if (segment.Extensions.Count > 0)
                                                     {
-                                                        <span>@item</span>
+                                                        <div class="flight-tags">
+                                                            @foreach (var item in segment.Extensions.Take(4))
+                                                            {
+                                                                <span>@item</span>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            @if (segmentIndex < leg.Layovers.Count)
+                                            {
+                                                var layover = leg.Layovers[segmentIndex];
+                                                <div class="layover-row">
+                                                    <span>@T("Layover"): @FormatDuration(layover.Duration)</span>
+                                                    <strong>@layover.Name @(!string.IsNullOrWhiteSpace(layover.Code) ? $"({layover.Code})" : "")</strong>
+                                                    @if (layover.Overnight)
+                                                    {
+                                                        <em>@T("Overnight")</em>
                                                     }
                                                 </div>
                                             }
-                                        </div>
+                                        }
                                     </div>
+                                </section>
+                            }
 
-                                    @if (segmentIndex < leg.Layovers.Count)
-                                    {
-                                        var layover = leg.Layovers[segmentIndex];
-                                        <div class="layover-row">
-                                            <span>@T("Layover"): @FormatDuration(layover.Duration)</span>
-                                            <strong>@layover.Name @(!string.IsNullOrWhiteSpace(layover.Code) ? $"({layover.Code})" : "")</strong>
-                                            @if (layover.Overnight)
-                                            {
-                                                <em>@T("Overnight")</em>
-                                            }
-                                        </div>
-                                    }
+                            <div class="flight-detail-side">
+                                @if (offer.CarbonEmissionsGrams is { } emissions)
+                                {
+                                    <span>@T("EmissionsEstimate"): @FormatKilograms(emissions) @T("KgCo2e")</span>
+                                }
+                                @if (offer.EmissionsDifferencePercent is { } difference)
+                                {
+                                    <span>@T("EmissionsDifference"): @FormatSignedPercent(difference)</span>
+                                }
+                                @foreach (var item in offer.Extensions.Take(4))
+                                {
+                                    <span>@item</span>
                                 }
                             </div>
-                        </section>
-                    }
 
-                    @if (offer.ReturnDate is not null && !string.IsNullOrWhiteSpace(offer.DepartureToken))
-                    {
-                        <section class="flight-leg return-leg-shell" data-return-details>
-                            <div class="flight-leg-heading">
-                                <div>
-                                    <strong>@T("ReturnFlight")</strong>
-                                    <span>@T("LoadingReturnFlight")</span>
+                            @if (!string.IsNullOrWhiteSpace(offer.BookingUrl) && offer.BookingUrl != "#")
+                            {
+                                <div class="row-actions itinerary-actions">
+                                    <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank" rel="noopener">@T("Open")</a>
                                 </div>
-                            </div>
-                        </section>
-                    }
-
-                    <div class="flight-detail-side">
-                        @if (offer.CarbonEmissionsGrams is { } emissions)
-                        {
-                            <span>@T("EmissionsEstimate"): @FormatKilograms(emissions) @T("KgCo2e")</span>
-                        }
-                        @if (offer.EmissionsDifferencePercent is { } difference)
-                        {
-                            <span>@T("EmissionsDifference"): @FormatSignedPercent(difference)</span>
-                        }
-                        @foreach (var item in offer.Extensions.Take(4))
-                        {
-                            <span>@item</span>
-                        }
-                    </div>
-
-                    @if (!string.IsNullOrWhiteSpace(offer.BookingUrl) && offer.BookingUrl != "#")
-                    {
-                        <div class="row-actions itinerary-actions">
-                            <a class="btn btn-sm btn-outline-primary" href="@offer.BookingUrl" target="_blank" rel="noopener">@T("Open")</a>
+                            }
                         </div>
-                    }
-                </div>
-            </details>
-        }
-    </div>
-}
+                    </details>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<div class="return-options-modal" data-return-modal hidden>
+    <div class="return-options-backdrop" data-return-modal-close></div>
+    <section class="return-options-dialog" role="dialog" aria-modal="true" aria-labelledby="returnOptionsTitle">
+        <header>
+            <div>
+                <strong id="returnOptionsTitle">@T("ReturnFlight")</strong>
+                <span data-return-modal-subtitle></span>
+            </div>
+            <button type="button" data-return-modal-close aria-label="@T("ReturnFlight")">×</button>
+        </header>
+        <div class="return-departure-snapshot" data-return-modal-departure></div>
+        <div class="return-options-status" data-return-modal-status></div>
+        <div data-return-results-source hidden>
+            <div class="result-pagination-controls return-pagination-controls" data-return-pagination>
+                <label for="returnPageSize">@T("PageSize")</label>
+                <select id="returnPageSize" class="form-select" data-return-page-size data-custom-select>
+                    <option value="5" selected>5</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="all">@T("All")</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-return-prev>@T("Previous")</button>
+                <span data-return-page-status></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-return-next>@T("Next")</button>
+            </div>
+            <div class="return-options-list" data-return-modal-list></div>
+        </div>
+    </section>
+</div>
 
 @if (airlineLinks.Count > 0)
 {
@@ -358,10 +529,10 @@
     public bool SaveAlert { get; set; }
 
     [Parameter, SupplyParameterFromQuery(Name = "origin")]
-    public string Origin { get; set; } = "JFK";
+    public string Origin { get; set; } = "";
 
     [Parameter, SupplyParameterFromQuery(Name = "destination")]
-    public string Destination { get; set; } = "Europe";
+    public string Destination { get; set; } = "";
 
     [Parameter, SupplyParameterFromQuery(Name = "originType")]
     public string OriginType { get; set; } = nameof(LocationType.Airport);
@@ -378,11 +549,27 @@
     [Parameter, SupplyParameterFromQuery(Name = "tripType")]
     public string TripType { get; set; } = "Return";
 
+    [Parameter, SupplyParameterFromQuery(Name = "dateMode")]
+    public string DateMode { get; set; } = "Specific";
+
     [Parameter, SupplyParameterFromQuery(Name = "depart")]
-    public string Depart { get; set; } = DateTime.Today.AddDays(14).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+    public string Depart { get; set; } = "";
 
     [Parameter, SupplyParameterFromQuery(Name = "returnDate")]
-    public string ReturnDate { get; set; } = DateTime.Today.AddDays(21).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+    public string ReturnDate { get; set; } = "";
+
+    [Parameter, SupplyParameterFromQuery(Name = "flexibleYear")]
+    public int? FlexibleYear { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "flexibleMonth")]
+    public int? FlexibleMonth { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "flexibleDepartureDay")]
+    public string FlexibleDepartureDay { get; set; } = nameof(DayOfWeek.Monday);
+
+    [Parameter, SupplyParameterFromQuery(Name = "flexibleStayDays")]
+    public int FlexibleStayDays { get; set; } = 4;
+
 
     [Parameter, SupplyParameterFromQuery(Name = "adults")]
     public int Adults { get; set; } = 1;
@@ -408,6 +595,18 @@
     [Parameter, SupplyParameterFromQuery(Name = "checkedBags")]
     public int CheckedBags { get; set; }
 
+    [Parameter, SupplyParameterFromQuery(Name = "outboundTimeFrom")]
+    public string? OutboundTimeFrom { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "outboundTimeTo")]
+    public string? OutboundTimeTo { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "returnTimeFrom")]
+    public string? ReturnTimeFrom { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "returnTimeTo")]
+    public string? ReturnTimeTo { get; set; }
+
     [Parameter, SupplyParameterFromQuery(Name = "currency")]
     public string Currency { get; set; } = "MAD";
 
@@ -422,6 +621,9 @@
 
     [Parameter, SupplyParameterFromQuery(Name = "targetPrice2")]
     public string? TargetPrice2 { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "targetFilterCount")]
+    public int TargetFilterCount { get; set; } = 1;
 
     private static readonly IReadOnlyList<CurrencyOption> Currencies =
     [
@@ -446,15 +648,43 @@
         new("SGD", "S$", "Singapore Dollar"),
         new("NZD", "NZ$", "New Zealand Dollar")
     ];
+    private static readonly IReadOnlyList<TimeOption> TimeOptions =
+    [
+        new("", "--:--"),
+        ..Enumerable.Range(0, 24)
+            .Select(hour => new TimeOption($"{hour:00}:00", $"{hour:00}:00"))
+            .ToList()
+    ];
 
     private IReadOnlyList<FlightOffer> offers = [];
     private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
     private List<FlightLocation> locations = [];
     private string? message;
+    private readonly HashSet<string> processedExecutionKeys = [];
+    private static readonly TimeSpan SearchPageCacheDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan AlertSaveGateDuration = TimeSpan.FromSeconds(20);
+    private static readonly ConcurrentDictionary<string, Lazy<Task<SearchPageCacheEntry>>> SearchPageCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> RecentAlertSaveKeys = new(StringComparer.Ordinal);
+    private static readonly IReadOnlyList<DayOfWeek> Weekdays =
+    [
+        DayOfWeek.Monday,
+        DayOfWeek.Tuesday,
+        DayOfWeek.Wednesday,
+        DayOfWeek.Thursday,
+        DayOfWeek.Friday,
+        DayOfWeek.Saturday,
+        DayOfWeek.Sunday
+    ];
+
     private CabinClass Cabin => Enum.TryParse<CabinClass>(CabinQuery, ignoreCase: true, out var cabin) ? cabin : CabinClass.Economy;
     private string TravellerSummary => $"{Adults + Children} {(Adults + Children == 1 ? T("Traveller") : T("Travellers"))}, {CabinLabel(Cabin)}";
     private bool ShowSecondTargetFilter => !string.IsNullOrWhiteSpace(TargetPrice2);
     private bool IsOneWay => string.Equals(TripType, "OneWay", StringComparison.OrdinalIgnoreCase);
+    private bool IsFlexibleDates => string.Equals(DateMode, "Flexible", StringComparison.OrdinalIgnoreCase);
+    private DayOfWeek SelectedFlexibleDepartureDay => ParseFlexibleDepartureDay();
+    private bool CanSaveAlert => offers.Count > 0;
+    private string AlertSaveHint => T("SearchBeforeAlert");
+    private int VisibleTargetFilterCount => Math.Clamp(TargetFilterCount > 1 || !string.IsNullOrWhiteSpace(TargetPrice2) ? 2 : 1, 1, 2);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -478,17 +708,204 @@
         }
 
         NormalizeDisplay(query);
+        var executionKey = BuildExecutionKey(SaveAlert ? "save" : "search", query);
+        if (!processedExecutionKeys.Add(executionKey))
+        {
+            return;
+        }
 
         if (SaveAlert)
         {
             await SaveAlertAsync(query);
+            RestoreCachedSearchResult(query);
+            return;
         }
 
-        offers = await FlightSearch.SearchAsync(query);
-        airlineLinks = FlightSearch.GetAirlineSearchLinks(query);
-        message = offers.Count == 0
-            ? T("NoLiveProvider")
-            : message;
+        var cachedResult = await GetCachedSearchResultAsync(BuildSearchResultKey(query), query);
+        offers = cachedResult.Offers;
+        airlineLinks = cachedResult.AirlineLinks;
+
+        if (offers.Count == 0)
+        {
+            message = T("NoLiveProvider");
+        }
+    }
+
+    private async Task<SearchPageCacheEntry> GetCachedSearchResultAsync(string key, FlightSearchQuery query)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (SearchPageCache.TryGetValue(key, out var existing) &&
+            existing.IsValueCreated &&
+            existing.Value.IsCompletedSuccessfully)
+        {
+            var completed = await existing.Value;
+            if (now - completed.CreatedAt <= SearchPageCacheDuration)
+            {
+                return completed;
+            }
+
+            SearchPageCache.TryRemove(KeyValuePair.Create(key, existing));
+        }
+
+        PruneSearchPageCache(now);
+        var created = new Lazy<Task<SearchPageCacheEntry>>(async () =>
+        {
+            var resultOffers = await FlightSearch.SearchAsync(query);
+            var resultAirlineLinks = FlightSearch.GetAirlineSearchLinks(query);
+            return new SearchPageCacheEntry(DateTimeOffset.UtcNow, resultOffers, resultAirlineLinks);
+        });
+        var current = SearchPageCache.GetOrAdd(key, created);
+
+        try
+        {
+            return await current.Value;
+        }
+        catch
+        {
+            SearchPageCache.TryRemove(KeyValuePair.Create(key, current));
+            throw;
+        }
+    }
+
+    private void RestoreCachedSearchResult(FlightSearchQuery query)
+    {
+        if (TryGetCompletedSearchResult(BuildSearchResultKey(query), out var cachedResult))
+        {
+            offers = cachedResult.Offers;
+            airlineLinks = cachedResult.AirlineLinks;
+        }
+    }
+
+    private static bool TryGetCompletedSearchResult(string key, out SearchPageCacheEntry entry)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (SearchPageCache.TryGetValue(key, out var existing) &&
+            existing.IsValueCreated &&
+            existing.Value.IsCompletedSuccessfully)
+        {
+            entry = existing.Value.Result;
+            if (now - entry.CreatedAt <= SearchPageCacheDuration)
+            {
+                return true;
+            }
+
+            SearchPageCache.TryRemove(KeyValuePair.Create(key, existing));
+        }
+
+        entry = default!;
+        return false;
+    }
+
+    private static void PruneSearchPageCache(DateTimeOffset now)
+    {
+        if (SearchPageCache.Count <= 64)
+        {
+            return;
+        }
+
+        foreach (var item in SearchPageCache)
+        {
+            if (!item.Value.IsValueCreated || !item.Value.Value.IsCompletedSuccessfully)
+            {
+                continue;
+            }
+
+            var entry = item.Value.Value.Result;
+            if (now - entry.CreatedAt > SearchPageCacheDuration)
+            {
+                SearchPageCache.TryRemove(item);
+            }
+        }
+    }
+
+    private string BuildExecutionKey(string action, FlightSearchQuery query)
+    {
+        return string.Join("|",
+            action,
+            query.OriginType,
+            query.Origin,
+            query.DestinationType,
+            query.Destination,
+            query.DepartFrom,
+            query.DepartTo,
+            query.ReturnFrom,
+            query.ReturnTo,
+            query.FlexibleDates,
+            query.FlexibleYear,
+            query.FlexibleMonth,
+            query.FlexibleDepartureDay,
+            query.FlexibleStayDays,
+            query.Adults,
+            query.Children,
+            query.Infants,
+            query.Cabin,
+            query.DirectOnly,
+            query.MaxStops,
+            query.CheckedBags,
+            query.OutboundTimeFromHour,
+            query.OutboundTimeToHour,
+            query.ReturnTimeFromHour,
+            query.ReturnTimeToHour,
+            query.Currency,
+            NormalizeTargetMode(TargetMode),
+            TargetPrice,
+            NormalizeTargetMode(TargetMode2),
+            TargetPrice2);
+    }
+
+    private static string BuildSearchResultKey(FlightSearchQuery query)
+    {
+        return string.Join("|",
+            "search-result",
+            query.OriginType,
+            query.Origin,
+            query.DestinationType,
+            query.Destination,
+            query.DepartFrom,
+            query.DepartTo,
+            query.ReturnFrom,
+            query.ReturnTo,
+            query.FlexibleDates,
+            query.FlexibleYear,
+            query.FlexibleMonth,
+            query.FlexibleDepartureDay,
+            query.FlexibleStayDays,
+            query.Adults,
+            query.Children,
+            query.Infants,
+            query.Cabin,
+            query.DirectOnly,
+            query.MaxStops,
+            query.CheckedBags,
+            query.OutboundTimeFromHour,
+            query.OutboundTimeToHour,
+            query.ReturnTimeFromHour,
+            query.ReturnTimeToHour,
+            query.Currency);
+    }
+
+    private static string BuildAlertSaveKey(string userId, FlightSearchQuery query, decimal? maxTargetPrice, decimal? minTargetPrice)
+    {
+        return string.Join("|",
+            "alert-save",
+            userId,
+            BuildSearchResultKey(query),
+            maxTargetPrice?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
+            minTargetPrice?.ToString("0.##", CultureInfo.InvariantCulture) ?? "");
+    }
+
+    private static bool TryEnterAlertSaveGate(string key)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var item in RecentAlertSaveKeys)
+        {
+            if (now - item.Value > AlertSaveGateDuration)
+            {
+                RecentAlertSaveKeys.TryRemove(item.Key, out _);
+            }
+        }
+
+        return RecentAlertSaveKeys.TryAdd(key, now);
     }
 
     private async Task SaveAlertAsync(FlightSearchQuery query)
@@ -506,33 +923,93 @@
             return;
         }
 
-        await using var db = await DbFactory.CreateDbContextAsync();
-        db.PriceAlerts.Add(new PriceAlert
+        var alertSaveKey = BuildAlertSaveKey(userId, query, maxTargetPrice, minTargetPrice);
+        if (!TryEnterAlertSaveGate(alertSaveKey))
         {
-            UserId = userId,
-            OriginType = query.OriginType,
-            Origin = query.Origin,
-            DestinationType = query.DestinationType,
-            Destination = query.Destination,
-            DepartFrom = query.DepartFrom,
-            DepartTo = query.DepartTo,
-            ReturnFrom = query.ReturnFrom,
-            ReturnTo = query.ReturnTo,
-            Adults = query.Adults,
-            Children = query.Children,
-            Infants = query.Infants,
-            Cabin = query.Cabin,
-            DirectOnly = query.DirectOnly,
-            MaxStops = query.MaxStops,
-            CheckedBags = query.CheckedBags,
-            Currency = query.Currency,
-            TargetMode = BuildLegacyTargetMode(maxTargetPrice, minTargetPrice),
-            TargetPrice = BuildLegacyTargetPrice(maxTargetPrice, minTargetPrice),
-            MaxTargetPrice = maxTargetPrice,
-            MinTargetPrice = minTargetPrice
-        });
-        await db.SaveChangesAsync();
-        message = T("AlertSaved");
+            message = T("AlertSaved");
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        try
+        {
+            var duplicateExists = await db.PriceAlerts.AnyAsync(alert =>
+                alert.UserId == userId &&
+                alert.OriginType == query.OriginType &&
+                alert.Origin == query.Origin &&
+                alert.DestinationType == query.DestinationType &&
+                alert.Destination == query.Destination &&
+                alert.DepartFrom == query.DepartFrom &&
+                alert.DepartTo == query.DepartTo &&
+                alert.ReturnFrom == query.ReturnFrom &&
+                alert.ReturnTo == query.ReturnTo &&
+                alert.FlexibleDates == query.FlexibleDates &&
+                alert.FlexibleYear == query.FlexibleYear &&
+                alert.FlexibleMonth == query.FlexibleMonth &&
+                alert.FlexibleDepartureDay == query.FlexibleDepartureDay &&
+                alert.FlexibleStayDays == query.FlexibleStayDays &&
+                alert.Adults == query.Adults &&
+                alert.Children == query.Children &&
+                alert.Infants == query.Infants &&
+                alert.Cabin == query.Cabin &&
+                alert.DirectOnly == query.DirectOnly &&
+                alert.MaxStops == query.MaxStops &&
+                alert.CheckedBags == query.CheckedBags &&
+                alert.OutboundTimeFromHour == query.OutboundTimeFromHour &&
+                alert.OutboundTimeToHour == query.OutboundTimeToHour &&
+                alert.ReturnTimeFromHour == query.ReturnTimeFromHour &&
+                alert.ReturnTimeToHour == query.ReturnTimeToHour &&
+                alert.Currency == query.Currency &&
+                alert.MaxTargetPrice == maxTargetPrice &&
+                alert.MinTargetPrice == minTargetPrice);
+
+            if (duplicateExists)
+            {
+                message = T("AlertAlreadySaved");
+                return;
+            }
+
+            db.PriceAlerts.Add(new PriceAlert
+            {
+                UserId = userId,
+                OriginType = query.OriginType,
+                Origin = query.Origin,
+                DestinationType = query.DestinationType,
+                Destination = query.Destination,
+                DepartFrom = query.DepartFrom,
+                DepartTo = query.DepartTo,
+                ReturnFrom = query.ReturnFrom,
+                ReturnTo = query.ReturnTo,
+                FlexibleDates = query.FlexibleDates,
+                FlexibleYear = query.FlexibleYear,
+                FlexibleMonth = query.FlexibleMonth,
+                FlexibleDepartureDay = query.FlexibleDepartureDay,
+                FlexibleStayDays = query.FlexibleStayDays,
+                Adults = query.Adults,
+                Children = query.Children,
+                Infants = query.Infants,
+                Cabin = query.Cabin,
+                DirectOnly = query.DirectOnly,
+                MaxStops = query.MaxStops,
+                CheckedBags = query.CheckedBags,
+                OutboundTimeFromHour = query.OutboundTimeFromHour,
+                OutboundTimeToHour = query.OutboundTimeToHour,
+                ReturnTimeFromHour = query.ReturnTimeFromHour,
+                ReturnTimeToHour = query.ReturnTimeToHour,
+                Currency = query.Currency,
+                TargetMode = BuildLegacyTargetMode(maxTargetPrice, minTargetPrice),
+                TargetPrice = BuildLegacyTargetPrice(maxTargetPrice, minTargetPrice),
+                MaxTargetPrice = maxTargetPrice,
+                MinTargetPrice = minTargetPrice
+            });
+            await db.SaveChangesAsync();
+            message = T("AlertSaved");
+        }
+        catch
+        {
+            RecentAlertSaveKeys.TryRemove(alertSaveKey, out _);
+            throw;
+        }
     }
 
     private bool TryBuildQuery(out FlightSearchQuery query, out string? validationMessage)
@@ -540,32 +1017,66 @@
         query = default!;
         validationMessage = null;
 
-        if (!TryParseDate(Depart, out var departDate))
+        DateOnly departDate;
+        DateOnly? returnDate;
+        int? flexibleYear = null;
+        int? flexibleMonth = null;
+        DayOfWeek? flexibleDepartureDay = null;
+        int? flexibleStayDays = null;
+        if (IsFlexibleDates)
         {
-            validationMessage = T("DepartDateInvalid");
-            return false;
-        }
-
-        DateOnly? returnDate = null;
-        if (!IsOneWay && !string.IsNullOrWhiteSpace(ReturnDate))
-        {
-            if (!TryParseDate(ReturnDate, out var parsedReturnDate))
+            if (!TryBuildFlexibleDateSeed(out departDate, out returnDate, out flexibleYear, out flexibleMonth, out flexibleDepartureDay, out flexibleStayDays, out validationMessage))
             {
-                validationMessage = T("ReturnDateInvalid");
+                return false;
+            }
+        }
+        else
+        {
+            if (!TryParseDate(Depart, out departDate))
+            {
+                validationMessage = T("DepartDateInvalid");
                 return false;
             }
 
-            returnDate = parsedReturnDate;
-        }
-
-        if (returnDate is not null && returnDate.Value < departDate)
-        {
-            departDate = returnDate.Value;
             returnDate = null;
+            if (!IsOneWay && !string.IsNullOrWhiteSpace(ReturnDate))
+            {
+                if (!TryParseDate(ReturnDate, out var parsedReturnDate))
+                {
+                    validationMessage = T("ReturnDateInvalid");
+                    return false;
+                }
+
+                returnDate = parsedReturnDate;
+            }
+
+            if (returnDate is not null && returnDate.Value < departDate)
+            {
+                departDate = returnDate.Value;
+                returnDate = null;
+            }
         }
 
         if (SaveAlert && !TryParseTargetFilters(out _, out _, out validationMessage))
         {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(Origin))
+        {
+            validationMessage = T("OriginRequired");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(Destination))
+        {
+            validationMessage = T("DestinationRequired");
+            return false;
+        }
+
+        if (Adults + Children < 1)
+        {
+            validationMessage = T("TravellersRequired");
             return false;
         }
 
@@ -574,6 +1085,10 @@
         var currency = string.IsNullOrWhiteSpace(Currency) ? "MAD" : Currency.Trim().ToUpperInvariant();
         var origin = ResolvePostedLocationValue(originType, Origin, OriginCode);
         var destination = ResolvePostedLocationValue(destinationType, Destination, DestinationCode);
+        var outboundTimeFromHour = ParseTimeHour(OutboundTimeFrom);
+        var outboundTimeToHour = ParseTimeHour(OutboundTimeTo);
+        var returnTimeFromHour = IsOneWay ? null : ParseTimeHour(ReturnTimeFrom);
+        var returnTimeToHour = IsOneWay ? null : ParseTimeHour(ReturnTimeTo);
 
         query = new FlightSearchQuery(
             originType,
@@ -584,6 +1099,11 @@
             departDate,
             returnDate,
             returnDate,
+            IsFlexibleDates,
+            flexibleYear,
+            flexibleMonth,
+            flexibleDepartureDay,
+            flexibleStayDays,
             Math.Clamp(Adults, 1, 9),
             Math.Clamp(Children, 0, 9),
             0,
@@ -591,6 +1111,10 @@
             DirectOnly,
             MaxStops,
             Math.Max(0, CheckedBags),
+            outboundTimeFromHour,
+            outboundTimeToHour,
+            returnTimeFromHour,
+            returnTimeToHour,
             currency);
         return true;
     }
@@ -602,6 +1126,15 @@
         Depart = query.DepartFrom.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
         ReturnDate = query.ReturnFrom?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "";
         TripType = query.ReturnFrom is null ? "OneWay" : "Return";
+        DateMode = query.FlexibleDates ? "Flexible" : "Specific";
+        FlexibleYear = query.FlexibleYear ?? FlexibleYear;
+        FlexibleMonth = query.FlexibleMonth ?? FlexibleMonth;
+        FlexibleDepartureDay = query.FlexibleDepartureDay?.ToString() ?? FlexibleDepartureDay;
+        FlexibleStayDays = query.FlexibleStayDays ?? FlexibleStayDays;
+        OutboundTimeFrom = FormatTimeHour(query.OutboundTimeFromHour);
+        OutboundTimeTo = FormatTimeHour(query.OutboundTimeToHour);
+        ReturnTimeFrom = FormatTimeHour(query.ReturnTimeFromHour);
+        ReturnTimeTo = FormatTimeHour(query.ReturnTimeToHour);
         Currency = query.Currency;
         TargetMode = NormalizeTargetMode(TargetMode);
         TargetMode2 = NormalizeTargetMode(TargetMode2);
@@ -609,20 +1142,29 @@
 
     private void NormalizeInputDefaults()
     {
-        Origin = string.IsNullOrWhiteSpace(Origin) ? "JFK" : Origin;
-        Destination = string.IsNullOrWhiteSpace(Destination) ? "Europe" : Destination;
+        Origin = Origin?.Trim() ?? "";
+        Destination = Destination?.Trim() ?? "";
         OriginType = string.IsNullOrWhiteSpace(OriginType) ? nameof(LocationType.Airport) : OriginType;
         DestinationType = string.IsNullOrWhiteSpace(DestinationType) ? nameof(LocationType.Continent) : DestinationType;
-        Depart = string.IsNullOrWhiteSpace(Depart)
-            ? DateTime.Today.AddDays(14).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)
-            : Depart;
+        Depart = Depart ?? "";
         ReturnDate = ReturnDate ?? "";
         Adults = Math.Clamp(Adults, 1, 9);
         Children = Math.Clamp(Children, 0, 9);
+        OutboundTimeFrom = NormalizeTimeValue(OutboundTimeFrom);
+        OutboundTimeTo = NormalizeTimeValue(OutboundTimeTo);
+        ReturnTimeFrom = IsOneWay ? "" : NormalizeTimeValue(ReturnTimeFrom);
+        ReturnTimeTo = IsOneWay ? "" : NormalizeTimeValue(ReturnTimeTo);
         Currency = string.IsNullOrWhiteSpace(Currency)
             ? "MAD"
             : Currency.Trim().ToUpperInvariant();
         TripType = IsOneWay ? "OneWay" : "Return";
+        DateMode = IsFlexibleDates ? "Flexible" : "Specific";
+        TargetFilterCount = Math.Clamp(TargetFilterCount, 1, 2);
+        var defaultFlexibleDate = DateTime.Today.AddDays(30);
+        FlexibleYear ??= defaultFlexibleDate.Year;
+        FlexibleMonth = FlexibleMonth is >= 1 and <= 12 ? FlexibleMonth : defaultFlexibleDate.Month;
+        FlexibleDepartureDay = ParseFlexibleDepartureDay().ToString();
+        FlexibleStayDays = Math.Clamp(FlexibleStayDays, 1, 365);
     }
 
     private static string ResolvePostedLocationValue(LocationType type, string displayValue, string? postedCode)
@@ -684,6 +1226,84 @@
             DateOnly.TryParseExact(value.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
     }
 
+    private static int? ParseTimeHour(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
+            ? Math.Clamp(time.Hour, 0, 23)
+            : null;
+    }
+
+    private static string FormatTimeHour(int? hour)
+    {
+        return hour is { } value ? $"{Math.Clamp(value, 0, 23):00}:00" : "";
+    }
+
+    private static string NormalizeTimeValue(string? value)
+    {
+        return FormatTimeHour(ParseTimeHour(value));
+    }
+
+    private bool TryBuildFlexibleDateSeed(
+        out DateOnly departDate,
+        out DateOnly? returnDate,
+        out int? flexibleYear,
+        out int? flexibleMonth,
+        out DayOfWeek? flexibleDepartureDay,
+        out int? flexibleStayDays,
+        out string? validationMessage)
+    {
+        departDate = default;
+        returnDate = null;
+        flexibleYear = null;
+        flexibleMonth = null;
+        flexibleDepartureDay = null;
+        flexibleStayDays = null;
+        validationMessage = null;
+
+        if (FlexibleYear is not { } year || year is < 1900 or > 2100 ||
+            FlexibleMonth is not { } month || month is < 1 or > 12)
+        {
+            validationMessage = T("FlexibleDateInvalid");
+            return false;
+        }
+
+        var departureDay = ParseFlexibleDepartureDay();
+        var stayDays = Math.Clamp(FlexibleStayDays, 1, 365);
+        var firstDay = new DateOnly(year, month, 1);
+        var daysInMonth = DateTime.DaysInMonth(year, month);
+        for (var day = 1; day <= daysInMonth; day++)
+        {
+            var candidate = firstDay.AddDays(day - 1);
+            if (candidate.DayOfWeek != departureDay)
+            {
+                continue;
+            }
+
+            departDate = candidate;
+            returnDate = IsOneWay ? null : candidate.AddDays(stayDays);
+            flexibleYear = year;
+            flexibleMonth = month;
+            flexibleDepartureDay = departureDay;
+            flexibleStayDays = IsOneWay ? null : stayDays;
+            return true;
+        }
+
+        validationMessage = T("FlexibleDateInvalid");
+        return false;
+    }
+
+    private DayOfWeek ParseFlexibleDepartureDay()
+    {
+        return Enum.TryParse<DayOfWeek>(FlexibleDepartureDay, ignoreCase: true, out var day)
+            ? day
+            : DayOfWeek.Monday;
+    }
+
     private static string CurrencySymbol(string? code)
     {
         return Currencies.FirstOrDefault(currency => currency.Code.Equals(code?.Trim(), StringComparison.OrdinalIgnoreCase))?.Symbol ?? "¤";
@@ -697,6 +1317,11 @@
     private static string FormatTime(DateTime? time)
     {
         return time?.ToString("h:mm tt", CultureInfo.CurrentCulture) ?? "--:--";
+    }
+
+    private static string FormatDateAttribute(DateOnly? date)
+    {
+        return date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
     }
 
     private static string AirportLabel(FlightAirport airport)
@@ -719,17 +1344,29 @@
         return kind.Equals("Return", StringComparison.OrdinalIgnoreCase) ? T("ReturnFlight") : T("DepartureFlight");
     }
 
+    private static string PriceSubtitle(FlightOffer offer)
+    {
+        if (offer.ResultKind.Equals("Return", StringComparison.OrdinalIgnoreCase))
+        {
+            return T("ReturnFlight");
+        }
+
+        return offer.ReturnDate is null ? T("OneWay") : T("Return");
+    }
+
     private bool TryParseTargetFilters(out decimal? maxTargetPrice, out decimal? minTargetPrice, out string? validationMessage)
     {
         maxTargetPrice = null;
         minTargetPrice = null;
         validationMessage = null;
 
-        foreach (var (mode, priceText) in new[] { (TargetMode, TargetPrice), (TargetMode2, TargetPrice2) })
+        var filterCount = VisibleTargetFilterCount;
+        foreach (var (mode, priceText) in new[] { (TargetMode, TargetPrice), (TargetMode2, TargetPrice2) }.Take(filterCount))
         {
             if (string.IsNullOrWhiteSpace(priceText))
             {
-                continue;
+                validationMessage = T("AlertTargetRequired");
+                return false;
             }
 
             if (!decimal.TryParse(priceText, NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price <= 0)
@@ -841,4 +1478,6 @@
     private static string T(string key) => UiText.T(key);
 
     private sealed record CurrencyOption(string Code, string Symbol, string Name);
+    private sealed record TimeOption(string Value, string Label);
+    private sealed record SearchPageCacheEntry(DateTimeOffset CreatedAt, IReadOnlyList<FlightOffer> Offers, IReadOnlyList<AirlineSearchLink> AirlineLinks);
 }

@@ -19,6 +19,11 @@ public sealed class PriceAlert
     public DateOnly DepartTo { get; set; }
     public DateOnly? ReturnFrom { get; set; }
     public DateOnly? ReturnTo { get; set; }
+    public bool FlexibleDates { get; set; }
+    public int? FlexibleYear { get; set; }
+    public int? FlexibleMonth { get; set; }
+    public DayOfWeek? FlexibleDepartureDay { get; set; }
+    public int? FlexibleStayDays { get; set; }
     public int Adults { get; set; } = 1;
     public int Children { get; set; }
     public int Infants { get; set; }
@@ -26,6 +31,10 @@ public sealed class PriceAlert
     public bool DirectOnly { get; set; }
     public int? MaxStops { get; set; }
     public int CheckedBags { get; set; }
+    public int? OutboundTimeFromHour { get; set; }
+    public int? OutboundTimeToHour { get; set; }
+    public int? ReturnTimeFromHour { get; set; }
+    public int? ReturnTimeToHour { get; set; }
     [MaxLength(3)]
     public string Currency { get; set; } = "MAD";
     [MaxLength(8)]

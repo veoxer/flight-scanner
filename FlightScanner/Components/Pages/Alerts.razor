@@ -1,5 +1,6 @@
 @page "/alerts"
 @attribute [Authorize]
+@using System.Globalization
 @using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject AuthenticationStateProvider AuthStateProvider
@@ -7,7 +8,7 @@
 <PageTitle>@UiText.T("Alerts")</PageTitle>
 
 <div class="page-title-row">
-    <h1>@UiText.T("PriceAlerts")</h1>
+    <h1 class="notification-title">@UiText.T("PriceAlerts")</h1>
     <button type="button"
             class="btn btn-outline-primary notification-action"
             data-enable-notifications
@@ -33,16 +34,73 @@ else
     <div class="alert-list">
         @foreach (var alert in alerts)
         {
-            <article class="alert-row">
-                <div>
-                    <strong>@alert.Origin @UiText.T("ToLower") @alert.Destination</strong>
-                    <span>@alert.DepartFrom.ToString("yyyy-MM-dd") @UiText.T("ToLower") @alert.DepartTo.ToString("yyyy-MM-dd") - @alert.Adults @UiText.T("Adults") - @alert.Cabin</span>
+            <details class="alert-row alert-detail-card">
+                <summary class="alert-summary">
+                    <div>
+                        <strong>@alert.Origin @UiText.T("ToLower") @alert.Destination</strong>
+                        <span>@FormatAlertDates(alert) - @alert.Adults @UiText.T("Adults") - @alert.Cabin</span>
+                    </div>
+                    <div>
+                        <strong>@FormatAlertTargets(alert)</strong>
+                        <span>@UiText.T("LastSeen"): @(alert.LastObservedPrice?.ToString("0.##") ?? UiText.T("NotChecked"))</span>
+                    </div>
+                    <div>
+                        <strong>@(alert.IsActive ? UiText.T("Active") : UiText.T("Paused"))</strong>
+                        <span>@UiText.T("Created"): @alert.CreatedAt.LocalDateTime.ToString("g", CultureInfo.CurrentCulture)</span>
+                    </div>
+                    <span class="expand-chevron" aria-hidden="true">⌄</span>
+                </summary>
+
+                <div class="alert-detail-grid">
+                    <div>
+                        <strong>@UiText.T("Route")</strong>
+                        <span>@UiText.T("From"): @alert.OriginType / @alert.Origin</span>
+                        <span>@UiText.T("To"): @alert.DestinationType / @alert.Destination</span>
+                        <span>@UiText.T("TripType"): @(alert.ReturnFrom is null ? UiText.T("OneWay") : UiText.T("Return"))</span>
+                    </div>
+                    <div>
+                        <strong>@UiText.T("Dates")</strong>
+                        <span>@FormatAlertDates(alert)</span>
+                        @if (alert.FlexibleDates)
+                        {
+                            <span>@UiText.T("DateMode"): @UiText.T("FlexibleDates")</span>
+                        }
+                        else
+                        {
+                            <span>@UiText.T("DateMode"): @UiText.T("SpecificDates")</span>
+                        }
+                    </div>
+                    <div>
+                        <strong>@UiText.T("TravellersCabin")</strong>
+                        <span>@UiText.T("Adults"): @alert.Adults</span>
+                        <span>@UiText.T("Children"): @alert.Children</span>
+                        <span>@UiText.T("CabinClass"): @alert.Cabin</span>
+                    </div>
+                    <div>
+                        <strong>@UiText.T("Filters")</strong>
+                        <span>@UiText.T("DirectFlights"): @FormatBoolean(alert.DirectOnly)</span>
+                        <span>@UiText.T("MaxStops"): @(alert.MaxStops?.ToString(CultureInfo.CurrentCulture) ?? "-")</span>
+                        <span>@UiText.T("CheckedBags"): @alert.CheckedBags</span>
+                        <span>@UiText.T("OutboundTime"): @FormatTimeWindow(alert.OutboundTimeFromHour, alert.OutboundTimeToHour)</span>
+                        @if (alert.ReturnFrom is not null)
+                        {
+                            <span>@UiText.T("ReturnTime"): @FormatTimeWindow(alert.ReturnTimeFromHour, alert.ReturnTimeToHour)</span>
+                        }
+                        <span>@UiText.T("Currency"): @alert.Currency</span>
+                    </div>
+                    <div>
+                        <strong>@UiText.T("AlertTarget")</strong>
+                        <span>@FormatAlertTargets(alert)</span>
+                        <span>@UiText.T("LastSeen"): @(alert.LastObservedPrice?.ToString("0.##", CultureInfo.CurrentCulture) ?? UiText.T("NotChecked"))</span>
+                    </div>
+                    <div>
+                        <strong>@UiText.T("ScanStatus")</strong>
+                        <span>@UiText.T("LastChecked"): @(alert.LastCheckedAt?.LocalDateTime.ToString("g", CultureInfo.CurrentCulture) ?? UiText.T("NotChecked"))</span>
+                        <span>@UiText.T("LastMatched"): @(alert.LastMatchedAt?.LocalDateTime.ToString("g", CultureInfo.CurrentCulture) ?? UiText.T("NotChecked"))</span>
+                    </div>
                 </div>
-                <div>
-                    <strong>@FormatAlertTargets(alert)</strong>
-                    <span>@UiText.T("LastSeen"): @(alert.LastObservedPrice?.ToString("0.##") ?? UiText.T("NotChecked"))</span>
-                </div>
-                <div class="row-actions">
+
+                <div class="row-actions alert-detail-actions">
                     <form method="post" action="@($"/alerts/{alert.Id}/toggle")" class="inline-action-form">
                         <AntiforgeryToken />
                         <button type="submit" class="btn btn-sm btn-outline-secondary">@(alert.IsActive ? UiText.T("Pause") : UiText.T("Resume"))</button>
@@ -52,7 +110,7 @@ else
                         <button type="submit" class="btn btn-sm btn-outline-danger">@UiText.T("Delete")</button>
                     </form>
                 </div>
-            </article>
+            </details>
         }
     </div>
 }
@@ -132,4 +190,42 @@ else
         return parts.Count > 0 ? string.Join(" / ", parts) : $"{alert.TargetPrice:0.##} {alert.Currency}";
     }
 
+    private static string FormatAlertDates(PriceAlert alert)
+    {
+        if (!alert.FlexibleDates)
+        {
+            return $"{alert.DepartFrom:yyyy-MM-dd} {UiText.T("ToLower")} {alert.DepartTo:yyyy-MM-dd}";
+        }
+
+        var monthName = alert.FlexibleMonth is >= 1 and <= 12
+            ? CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(alert.FlexibleMonth.Value)
+            : UiText.T("Month");
+        var weekday = alert.FlexibleDepartureDay is { } day
+            ? CultureInfo.CurrentCulture.DateTimeFormat.GetDayName(day)
+            : UiText.T("Weekday");
+        var stay = alert.ReturnFrom is null
+            ? ""
+            : $" / {alert.FlexibleStayDays ?? 1} {UiText.T("StayDays")}";
+        return $"{UiText.T("FlexibleDates")}: {monthName} {alert.FlexibleYear} / {weekday}{stay}";
+    }
+
+    private static string FormatBoolean(bool value)
+    {
+        return value ? UiText.T("Yes") : UiText.T("No");
+    }
+
+    private static string FormatTimeWindow(int? fromHour, int? toHour)
+    {
+        if (fromHour is null && toHour is null)
+        {
+            return UiText.T("AnyTime");
+        }
+
+        return $"{FormatHour(fromHour ?? 0)} - {FormatHour(toHour ?? 23)}";
+    }
+
+    private static string FormatHour(int hour)
+    {
+        return $"{Math.Clamp(hour, 0, 23):00}:00";
+    }
 }

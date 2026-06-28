@@ -1,4 +1,7 @@
 (function () {
+    var searchStateKey = "flightscanner.search.filters";
+    var searchResultsKey = "flightscanner.search.results";
+
     function todayDate() {
         var now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -140,7 +143,6 @@
             }
             if (date < today) {
                 button.classList.add("past");
-                button.disabled = true;
             }
             if (date.getTime() === today.getTime()) {
                 button.classList.add("today");
@@ -226,6 +228,60 @@
         });
     }
 
+    function parseTimeHourValue(value) {
+        var match = /^(\d{2}):/.exec(value || "");
+        return match ? Number(match[1]) : null;
+    }
+
+    function bindTimeRanges(root) {
+        var ranges = {};
+        root.querySelectorAll("[data-time-range][data-time-bound]").forEach(function (select) {
+            var range = select.getAttribute("data-time-range");
+            var bound = select.getAttribute("data-time-bound");
+            ranges[range] = ranges[range] || {};
+            ranges[range][bound] = select;
+        });
+
+        Object.keys(ranges).forEach(function (range) {
+            var start = ranges[range].start;
+            var end = ranges[range].end;
+            if (!start || !end || start.dataset.boundTimeRange === "true") {
+                return;
+            }
+
+            function sync() {
+                var startHour = parseTimeHourValue(start.value);
+                var endHour = parseTimeHourValue(end.value);
+
+                Array.prototype.forEach.call(end.options, function (option) {
+                    var hour = parseTimeHourValue(option.value);
+                    option.disabled = hour !== null && startHour !== null && hour <= startHour;
+                });
+
+                Array.prototype.forEach.call(start.options, function (option) {
+                    var hour = parseTimeHourValue(option.value);
+                    option.disabled = hour !== null && endHour !== null && hour >= endHour;
+                });
+
+                if (end.value && end.selectedOptions.length && end.selectedOptions[0].disabled) {
+                    end.value = "";
+                }
+                if (start.value && start.selectedOptions.length && start.selectedOptions[0].disabled) {
+                    start.value = "";
+                }
+
+                start.dispatchEvent(new Event("customselectrefresh"));
+                end.dispatchEvent(new Event("customselectrefresh"));
+            }
+
+            start.dataset.boundTimeRange = "true";
+            end.dataset.boundTimeRange = "true";
+            start.addEventListener("change", sync);
+            end.addEventListener("change", sync);
+            sync();
+        });
+    }
+
     function bindRouteSwap(root) {
         var button = root.querySelector("[data-route-swap]");
         if (!button || button.dataset.boundSwap === "true") {
@@ -257,6 +313,7 @@
         var hidden = root.querySelector("[data-trip-type-value]");
         var returnField = root.querySelector("[data-return-field]");
         var returnInput = root.querySelector("[data-flight-date='return']");
+        var returnTimeField = root.querySelector("[data-return-time-field]");
         if (!group || !hidden || group.dataset.boundTripMode === "true") {
             return;
         }
@@ -273,6 +330,13 @@
             if (returnInput) {
                 returnInput.disabled = isOneWay;
             }
+            if (returnTimeField) {
+                returnTimeField.hidden = isOneWay;
+                returnTimeField.querySelectorAll("input").forEach(function (input) {
+                    input.disabled = isOneWay;
+                });
+            }
+            syncDateMode(root);
         }
 
         group.dataset.boundTripMode = "true";
@@ -282,6 +346,231 @@
             });
         });
         setTripType(hidden.value === "OneWay" ? "OneWay" : "Return");
+    }
+
+    function syncDateMode(root) {
+        var hidden = root.querySelector("[data-date-mode-value]");
+        if (!hidden) {
+            return;
+        }
+
+        var isFlexible = hidden.value === "Flexible";
+        var tripType = root.querySelector("[data-trip-type-value]");
+        var isOneWay = tripType && tripType.value === "OneWay";
+        root.querySelectorAll("[data-date-mode-option]").forEach(function (button) {
+            button.classList.toggle("active", button.getAttribute("data-date-mode-option") === hidden.value);
+        });
+
+        root.querySelectorAll("[data-specific-date-field]").forEach(function (field) {
+            field.hidden = isFlexible || (field.hasAttribute("data-return-field") && isOneWay);
+            field.querySelectorAll("input, select, button").forEach(function (input) {
+                if (input.hasAttribute("data-date-toggle")) {
+                    input.disabled = isFlexible || (field.hasAttribute("data-return-field") && isOneWay);
+                } else {
+                    input.disabled = isFlexible || (input.getAttribute("data-flight-date") === "return" && isOneWay);
+                }
+            });
+        });
+
+        root.querySelectorAll("[data-flexible-date-field]").forEach(function (field) {
+            var isStay = field.hasAttribute("data-flexible-stay-field");
+            var isReturnOnly = field.hasAttribute("data-flexible-return-only-field");
+            field.hidden = !isFlexible || ((isStay || isReturnOnly) && isOneWay);
+            field.querySelectorAll("input, select, button").forEach(function (input) {
+                input.disabled = !isFlexible || ((isStay || isReturnOnly) && isOneWay);
+            });
+        });
+
+        refreshCustomSelects(root);
+    }
+
+    function bindDateMode(root) {
+        var group = root.querySelector("[data-date-mode-group]");
+        var hidden = root.querySelector("[data-date-mode-value]");
+        if (!group || !hidden || group.dataset.boundDateMode === "true") {
+            syncDateMode(root);
+            return;
+        }
+
+        group.dataset.boundDateMode = "true";
+        group.querySelectorAll("[data-date-mode-option]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                hidden.value = button.getAttribute("data-date-mode-option") === "Flexible" ? "Flexible" : "Specific";
+                syncDateMode(root);
+            });
+        });
+        hidden.value = hidden.value === "Flexible" ? "Flexible" : "Specific";
+        syncDateMode(root);
+    }
+
+    function refreshCustomSelects(root) {
+        root.querySelectorAll("select[data-custom-select]").forEach(function (select) {
+            select.dispatchEvent(new Event("customselectrefresh"));
+        });
+    }
+
+    function closeCustomSelects(except) {
+        document.querySelectorAll(".custom-select-shell.open").forEach(function (shell) {
+            if (shell !== except) {
+                shell.classList.remove("open");
+                var menu = shell.querySelector(".custom-select-menu");
+                if (menu) {
+                    menu.hidden = true;
+                }
+            }
+        });
+    }
+
+    function bindCustomSelects(root) {
+        root.querySelectorAll("select[data-custom-select]").forEach(function (select) {
+            if (select.dataset.boundCustomSelect === "true") {
+                select.dispatchEvent(new Event("customselectrefresh"));
+                return;
+            }
+
+            select.dataset.boundCustomSelect = "true";
+            select.classList.add("native-select-hidden");
+
+            var shell = document.createElement("div");
+            shell.className = "custom-select-shell";
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "custom-select-button";
+            button.innerHTML = "<span></span><i aria-hidden=\"true\">⌄</i>";
+            var menu = document.createElement("div");
+            menu.className = "custom-select-menu";
+            menu.hidden = true;
+            var search = null;
+            var list = document.createElement("div");
+            list.className = "custom-select-options";
+
+            if (select.dataset.customSelectSearch === "true" || select.options.length > 6) {
+                search = document.createElement("input");
+                search.type = "search";
+                search.className = "custom-select-search";
+                search.placeholder = "Search";
+                menu.appendChild(search);
+            }
+
+            menu.appendChild(list);
+            shell.append(button, menu);
+            select.insertAdjacentElement("afterend", shell);
+
+            function selectedOption() {
+                return select.selectedOptions && select.selectedOptions.length
+                    ? select.selectedOptions[0]
+                    : select.options[select.selectedIndex];
+            }
+
+            function updateButton() {
+                var option = selectedOption();
+                button.querySelector("span").textContent = option ? option.textContent : "";
+                button.disabled = select.disabled;
+                shell.classList.toggle("disabled", select.disabled);
+            }
+
+            function renderOptions(filter) {
+                var query = (filter || "").trim().toLowerCase();
+                list.replaceChildren();
+                Array.prototype.forEach.call(select.options, function (option) {
+                    if (query && !option.textContent.toLowerCase().includes(query) && !option.value.toLowerCase().includes(query)) {
+                        return;
+                    }
+
+                    var item = document.createElement("button");
+                    item.type = "button";
+                    item.className = "custom-select-option";
+                    item.disabled = option.disabled;
+                    item.dataset.value = option.value;
+                    item.innerHTML = "<span></span>";
+                    item.querySelector("span").textContent = option.textContent;
+                    item.classList.toggle("selected", option.value === select.value);
+                    function chooseOption(event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (option.disabled) {
+                            return;
+                        }
+
+                        option.selected = true;
+                        select.value = option.value;
+                        renderOptions(search ? search.value : "");
+                        select.dispatchEvent(new Event("change", { bubbles: true }));
+                        select.dispatchEvent(new Event("input", { bubbles: true }));
+                        updateButton();
+                        shell.classList.remove("open");
+                        menu.hidden = true;
+                    }
+
+                    item.addEventListener("pointerdown", chooseOption);
+                    item.addEventListener("click", function (event) {
+                        if (event.detail !== 0) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+
+                        chooseOption(event);
+                    });
+                    list.appendChild(item);
+                });
+            }
+
+            function openMenu() {
+                if (select.disabled) {
+                    return;
+                }
+
+                closeCustomSelects(shell);
+                renderOptions(search ? search.value : "");
+                shell.classList.add("open");
+                menu.hidden = false;
+                if (search) {
+                    search.value = "";
+                    renderOptions("");
+                    search.focus();
+                }
+            }
+
+            button.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (menu.hidden) {
+                    openMenu();
+                } else {
+                    shell.classList.remove("open");
+                    menu.hidden = true;
+                }
+            });
+
+            if (search) {
+                search.addEventListener("click", function (event) {
+                    event.stopPropagation();
+                });
+                search.addEventListener("input", function () {
+                    renderOptions(search.value);
+                });
+            }
+
+            select.addEventListener("change", updateButton);
+            select.addEventListener("customselectrefresh", function () {
+                updateButton();
+                if (!menu.hidden) {
+                    renderOptions(search ? search.value : "");
+                }
+            });
+
+            updateButton();
+        });
+
+        if (document.body.dataset.boundCustomSelectClose !== "true") {
+            document.body.dataset.boundCustomSelectClose = "true";
+            document.addEventListener("click", function (event) {
+                if (!event.target.closest(".custom-select-shell")) {
+                    closeCustomSelects();
+                }
+            });
+        }
     }
 
     function bindCurrencyCombobox(root) {
@@ -363,6 +652,7 @@
 
         stack.dataset.boundTargets = "true";
         var addButton = stack.querySelector("[data-target-add]");
+        var countInput = stack.querySelector("[data-target-filter-count]");
         var filters = Array.prototype.slice.call(stack.querySelectorAll("[data-target-filter]"));
 
         function visibleFilters() {
@@ -382,6 +672,14 @@
                 Array.prototype.forEach.call(select.options, function (option) {
                     option.disabled = option.value !== select.value && selected.indexOf(option.value) >= 0;
                 });
+                select.dispatchEvent(new Event("customselectrefresh"));
+            });
+
+            filters.forEach(function (filter) {
+                var input = filter.querySelector("input");
+                if (input) {
+                    input.setCustomValidity("");
+                }
             });
 
             filters.forEach(function (filter) {
@@ -393,6 +691,9 @@
 
             if (addButton) {
                 addButton.hidden = visible.length >= filters.length;
+            }
+            if (countInput) {
+                countInput.value = String(visible.length);
             }
         }
 
@@ -431,6 +732,9 @@
             var remove = filter.querySelector("[data-target-remove]");
 
             select.addEventListener("change", syncOptions);
+            input.addEventListener("input", function () {
+                input.setCustomValidity("");
+            });
             if (remove) {
                 remove.addEventListener("click", function () {
                     if (visibleFilters().length <= 1) {
@@ -445,6 +749,41 @@
         });
 
         syncOptions();
+    }
+
+    function clearAlertTargetValidity(root) {
+        root.querySelectorAll("[data-target-filter] input").forEach(function (input) {
+            input.setCustomValidity("");
+        });
+    }
+
+    function validateAlertTargets(root) {
+        var stack = root.querySelector("[data-alert-targets]");
+        if (!stack) {
+            return true;
+        }
+
+        var message = stack.getAttribute("data-alert-target-required") || "Enter a target price before saving an alert.";
+        var invalid = null;
+        Array.prototype.slice.call(stack.querySelectorAll("[data-target-filter]")).forEach(function (filter) {
+            if (filter.hidden || invalid) {
+                return;
+            }
+
+            var input = filter.querySelector("input");
+            var value = input ? Number(input.value) : 0;
+            if (!input || !input.value || !Number.isFinite(value) || value <= 0) {
+                invalid = input;
+            }
+        });
+
+        if (!invalid) {
+            return true;
+        }
+
+        invalid.setCustomValidity(message);
+        invalid.reportValidity();
+        return false;
     }
 
     function createOption(item, input, typeInput, codeInput, menu) {
@@ -717,6 +1056,248 @@
         details.innerHTML = html;
     }
 
+    function returnOptionsUrl(result) {
+        var token = result.getAttribute("data-return-token") || "";
+        var departureId = result.getAttribute("data-return-departure-id") || "";
+        var arrivalId = result.getAttribute("data-return-arrival-id") || "";
+        var outboundDate = result.getAttribute("data-return-outbound-date") || "";
+        var returnDate = result.getAttribute("data-return-date") || "";
+        return "/api/flights/return-options?departureToken=" + encodeURIComponent(token) +
+            "&currency=" + encodeURIComponent(result.getAttribute("data-currency") || "MAD") +
+            "&departureId=" + encodeURIComponent(departureId) +
+            "&arrivalId=" + encodeURIComponent(arrivalId) +
+            "&outboundDate=" + encodeURIComponent(outboundDate) +
+            "&returnDate=" + encodeURIComponent(returnDate);
+    }
+
+    function renderReturnOptionCard(offer, result) {
+        var leg = offer && offer.itineraryLegs && offer.itineraryLegs.length ? offer.itineraryLegs[0] : null;
+        var currency = offer.currency || result.getAttribute("data-currency") || "MAD";
+        var symbol = result.getAttribute("data-price-symbol") || "";
+        var route = leg && leg.segments && leg.segments.length
+            ? airportLabel(leg.segments[0].departureAirport) + " to " + airportLabel(leg.segments[leg.segments.length - 1].arrivalAirport)
+            : (offer.origin || "") + " to " + (offer.destination || "");
+        var html = '<details class="result-card itinerary-result return-option-card" data-return-option><summary class="result-summary">' +
+            '<div class="airline-identity"><span class="airline-logo-fallback">' + escapeHtml((offer.airline || "A").slice(0, 2).toUpperCase()) +
+            '</span><span><strong>' +
+            escapeHtml(offer.airline || result.dataset.returnTitle || "Return flight") +
+            ' ' + escapeHtml(offer.flightNumber || "") +
+            '</strong><span>' + escapeHtml(offer.provider || "") + '</span></span></div><div><strong>' +
+            escapeHtml(symbol) + ' ' + escapeHtml(offer.price || "") + ' ' + escapeHtml(currency) +
+            '</strong><span>' + escapeHtml(result.dataset.returnTitle || "Return flight") + '</span></div><div><strong>' +
+            escapeHtml(offer.departDate || "") + '</strong><span>' + escapeHtml(route) +
+            '</span></div><div><strong>' + escapeHtml(offer.stops || 0) + '</strong><span>' +
+            escapeHtml(formatDurationValue(offer.duration)) + '</span></div><span class="expand-chevron" aria-hidden="true">⌄</span></summary>';
+
+        if (!leg) {
+            return html + '<div class="itinerary-details"><p>' + escapeHtml(result.dataset.errorText || "Return flight details unavailable") + '</p></div></details>';
+        }
+
+        html += '<div class="itinerary-details"><section class="flight-leg"><div class="flight-leg-heading"><div><strong>' +
+            escapeHtml(result.dataset.returnTitle || "Return flight") +
+            '</strong><span>' + escapeHtml(leg.date || "") + '</span></div><span>' +
+            escapeHtml(result.dataset.durationLabel || "Travel time") + ': ' +
+            escapeHtml(formatDurationValue(leg.duration)) + '</span></div><div class="flight-timeline">';
+
+        (leg.segments || []).forEach(function (segment, index) {
+            html += '<div class="flight-segment"><div class="timeline-rail"><span></span><i></i><span></span></div><div class="segment-main">' +
+                '<div class="segment-airports"><strong>' + formatSegmentTime(segment.departureAirport && segment.departureAirport.time) +
+                '</strong><span>' + escapeHtml(airportLabel(segment.departureAirport)) +
+                '</span><strong>' + formatSegmentTime(segment.arrivalAirport && segment.arrivalAirport.time) +
+                '</strong><span>' + escapeHtml(airportLabel(segment.arrivalAirport)) + '</span></div>' +
+                '<div class="segment-meta"><span>' + escapeHtml(formatDurationValue(segment.duration)) +
+                '</span><span>' + escapeHtml(segment.airline || "") + '</span>';
+
+            [segment.travelClass, segment.airplane, segment.flightNumber].forEach(function (value) {
+                if (value) {
+                    html += '<span>' + escapeHtml(value) + '</span>';
+                }
+            });
+            html += '</div></div></div>';
+
+            if (leg.layovers && leg.layovers[index]) {
+                var layover = leg.layovers[index];
+                html += '<div class="layover-row"><span>' +
+                    escapeHtml(result.dataset.layoverLabel || "Layover") + ': ' +
+                    escapeHtml(formatDurationValue(layover.duration)) + '</span><strong>' +
+                    escapeHtml(layover.name || "") + escapeHtml(layover.code ? " (" + layover.code + ")" : "") +
+                    '</strong></div>';
+            }
+        });
+
+        return html + '</div></section></div></details>';
+    }
+
+    function renderDepartureSnapshot(result) {
+        var summary = result.querySelector(".result-summary");
+        if (!summary) {
+            return "";
+        }
+
+        var cells = Array.prototype.slice.call(summary.children).filter(function (child) {
+            return !child.classList.contains("expand-chevron");
+        });
+        return '<div class="return-departure-grid">' + cells.slice(0, 4).map(function (cell) {
+            return '<div>' + cell.innerHTML + '</div>';
+        }).join("") + '</div>';
+    }
+
+    function bindReturnPagination(modal) {
+        var source = modal.querySelector("[data-return-results-source]");
+        var list = modal.querySelector("[data-return-modal-list]");
+        var controls = modal.querySelector("[data-return-pagination]");
+        if (!source || !list || !controls) {
+            return;
+        }
+
+        controls.dataset.boundReturnPagination = "true";
+        var pageSize = controls.querySelector("[data-return-page-size]");
+        var previous = controls.querySelector("[data-return-prev]");
+        var next = controls.querySelector("[data-return-next]");
+        var status = controls.querySelector("[data-return-page-status]");
+        var page = 1;
+
+        function cards() {
+            return Array.prototype.slice.call(list.querySelectorAll("[data-return-option]"));
+        }
+
+        function selectedPageSize() {
+            if (!pageSize || pageSize.value === "all") {
+                return Number.MAX_SAFE_INTEGER;
+            }
+
+            return Math.max(1, Number(pageSize.value) || 5);
+        }
+
+        function render() {
+            var items = cards();
+            var size = selectedPageSize();
+            var pageCount = Math.max(1, Math.ceil(items.length / size));
+            page = Math.min(Math.max(1, page), pageCount);
+            var start = (page - 1) * size;
+            var end = start + size;
+            items.forEach(function (item, index) {
+                item.hidden = !(index >= start && index < end);
+            });
+            controls.hidden = items.length <= 1;
+            if (previous) {
+                previous.disabled = page <= 1;
+            }
+            if (next) {
+                next.disabled = page >= pageCount;
+            }
+            if (status) {
+                status.textContent = page + " / " + pageCount;
+            }
+        }
+
+        if (pageSize) {
+            pageSize.onchange = function () {
+                page = 1;
+                render();
+            };
+        }
+        if (previous) {
+            previous.onclick = function () {
+                page--;
+                render();
+            };
+        }
+        if (next) {
+            next.onclick = function () {
+                page++;
+                render();
+            };
+        }
+
+        bindCustomSelects(modal);
+        render();
+    }
+
+    function openReturnOptionsModal(result) {
+        var modal = document.querySelector("[data-return-modal]");
+        if (!modal) {
+            return;
+        }
+
+        var list = modal.querySelector("[data-return-modal-list]");
+        var status = modal.querySelector("[data-return-modal-status]");
+        var subtitle = modal.querySelector("[data-return-modal-subtitle]");
+        var departure = modal.querySelector("[data-return-modal-departure]");
+        var source = modal.querySelector("[data-return-results-source]");
+        var token = result.getAttribute("data-return-token") || "";
+        var returnDate = result.getAttribute("data-return-date") || "";
+        if (!token || !returnDate) {
+            return;
+        }
+
+        if (subtitle) {
+            subtitle.textContent = result.getAttribute("data-return-arrival-id") + " · " + (returnDate || "");
+        }
+        if (departure) {
+            departure.innerHTML = renderDepartureSnapshot(result);
+        }
+        if (list) {
+            list.replaceChildren();
+        }
+        if (source) {
+            source.hidden = true;
+        }
+        if (status) {
+            status.hidden = false;
+            status.innerHTML = '<span class="search-loading-spinner" aria-hidden="true"></span><strong>' +
+                escapeHtml(result.dataset.loadingText || "Loading return flight") + '</strong>';
+        }
+        modal.hidden = false;
+        document.body.classList.add("modal-open");
+
+        fetch(returnOptionsUrl(result), { headers: { "Accept": "application/json" } })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error("Return options request failed");
+                }
+                return response.json();
+            })
+            .then(function (offers) {
+                if (!Array.isArray(offers) || offers.length === 0) {
+                    throw new Error("No return options returned");
+                }
+
+                if (status) {
+                    status.hidden = true;
+                    status.textContent = "";
+                }
+                if (list) {
+                    list.innerHTML = offers.map(function (offer) {
+                        return renderReturnOptionCard(offer, result);
+                    }).join("");
+                }
+                if (source) {
+                    source.hidden = false;
+                }
+                bindReturnPagination(modal);
+            })
+            .catch(function () {
+                if (status) {
+                    status.hidden = false;
+                    status.textContent = result.dataset.errorText || "Return flight details unavailable";
+                }
+                if (source) {
+                    source.hidden = true;
+                }
+            });
+    }
+
+    function closeReturnOptionsModal() {
+        var modal = document.querySelector("[data-return-modal]");
+        if (!modal) {
+            return;
+        }
+
+        modal.hidden = true;
+        document.body.classList.remove("modal-open");
+    }
+
     function bindFlightResultDetails() {
         document.querySelectorAll("[data-flight-result]").forEach(function (result) {
             if (result.dataset.boundFlightResult === "true") {
@@ -724,38 +1305,299 @@
             }
 
             result.dataset.boundFlightResult = "true";
-            result.addEventListener("toggle", function () {
-                var token = result.getAttribute("data-return-token");
-                var target = result.querySelector("[data-return-details]");
-                if (!result.open || !target || !token || target.dataset.loaded === "true" || target.dataset.loading === "true") {
+            result.addEventListener("click", function (event) {
+                var summary = event.target.closest(".result-summary");
+                if (!summary || event.target.closest(".expand-chevron")) {
                     return;
                 }
 
-                target.dataset.loading = "true";
-                target.querySelector(".flight-leg-heading span").textContent = result.dataset.loadingText || "Loading return flight";
-                fetch("/api/flights/return-details?departureToken=" + encodeURIComponent(token) +
-                    "&currency=" + encodeURIComponent(result.getAttribute("data-currency") || "MAD"), {
-                    headers: { "Accept": "application/json" }
-                })
-                    .then(function (response) {
-                        if (!response.ok) {
-                            throw new Error("Return details request failed");
-                        }
-                        return response.json();
-                    })
-                    .then(function (offer) {
-                        target.dataset.loaded = "true";
-                        renderReturnLeg(target, offer);
-                    })
-                    .catch(function () {
-                        target.innerHTML = '<div class="flight-leg-heading"><div><strong>' +
-                            escapeHtml(result.dataset.returnTitle || "Return flight") + '</strong><span>' +
-                            escapeHtml(result.dataset.errorText || "Return flight details unavailable") + '</span></div></div>';
-                    })
-                    .finally(function () {
-                        target.dataset.loading = "false";
-                    });
+                if (!result.getAttribute("data-return-token") || !result.getAttribute("data-return-date")) {
+                    return;
+                }
+
+                event.preventDefault();
+                openReturnOptionsModal(result);
             });
+        });
+
+        document.querySelectorAll("[data-return-modal-close]").forEach(function (button) {
+            if (button.dataset.boundReturnModalClose === "true") {
+                return;
+            }
+
+            button.dataset.boundReturnModalClose = "true";
+            button.addEventListener("click", closeReturnOptionsModal);
+        });
+
+        if (document.body.dataset.boundReturnModalEscape !== "true") {
+            document.body.dataset.boundReturnModalEscape = "true";
+            document.addEventListener("keydown", function (event) {
+                if (event.key === "Escape") {
+                    closeReturnOptionsModal();
+                }
+            });
+        }
+    }
+
+    function isAlertSaveNavigation() {
+        return new URLSearchParams(window.location.search).get("saveAlert") === "true";
+    }
+
+    function cacheRenderedResults() {
+        var source = document.querySelector("[data-results-cache-source]");
+        if (!source) {
+            if (!isAlertSaveNavigation()) {
+                sessionStorage.removeItem(searchResultsKey);
+            }
+            return;
+        }
+
+        sessionStorage.setItem(searchResultsKey, source.innerHTML);
+    }
+
+    function restoreResultsAfterAlertSave() {
+        if (!isAlertSaveNavigation()) {
+            return;
+        }
+
+        var target = document.querySelector("[data-results-cache-target]");
+        if (!target || target.querySelector("[data-results-cache-source]")) {
+            return;
+        }
+
+        var html = sessionStorage.getItem(searchResultsKey);
+        if (!html) {
+            return;
+        }
+
+        var wrapper = document.createElement("div");
+        wrapper.setAttribute("data-results-cache-source", "");
+        wrapper.innerHTML = html;
+        target.replaceChildren(wrapper);
+        bindFlightResultDetails();
+    }
+
+    function bindResultPagination() {
+        var source = document.querySelector("[data-results-cache-source]");
+        var grid = source && source.querySelector("[data-results-grid]");
+        var controls = source && source.querySelector("[data-result-pagination]");
+        if (!source || !grid || !controls || controls.dataset.boundResultPagination === "true") {
+            return;
+        }
+
+        controls.dataset.boundResultPagination = "true";
+        var pageSize = controls.querySelector("[data-results-page-size]");
+        var previous = controls.querySelector("[data-results-prev]");
+        var next = controls.querySelector("[data-results-next]");
+        var status = controls.querySelector("[data-results-page-status]");
+        var tabs = source.querySelector("[data-result-tabs]");
+        var activeKind = "Departure";
+        var page = 1;
+
+        function cards() {
+            return Array.prototype.slice.call(grid.querySelectorAll("[data-flight-result]"));
+        }
+
+        function activeCards() {
+            var items = cards();
+            if (!tabs) {
+                return items;
+            }
+
+            return items.filter(function (item) {
+                return (item.dataset.resultKind || "Departure") === activeKind;
+            });
+        }
+
+        function selectedPageSize() {
+            if (!pageSize || pageSize.value === "all") {
+                return Number.MAX_SAFE_INTEGER;
+            }
+
+            return Math.max(1, Number(pageSize.value) || 10);
+        }
+
+        function render() {
+            var allItems = cards();
+            var items = activeCards();
+            var size = selectedPageSize();
+            var pageCount = Math.max(1, Math.ceil(items.length / size));
+            page = Math.min(Math.max(1, page), pageCount);
+            var start = (page - 1) * size;
+            var end = start + size;
+
+            allItems.forEach(function (item) {
+                item.hidden = true;
+            });
+            items.forEach(function (item, index) {
+                item.hidden = !(index >= start && index < end);
+            });
+
+            controls.hidden = items.length <= 1;
+            if (previous) {
+                previous.disabled = page <= 1;
+            }
+            if (next) {
+                next.disabled = page >= pageCount;
+            }
+            if (status) {
+                status.textContent = page + " / " + pageCount;
+            }
+        }
+
+        if (pageSize) {
+            pageSize.addEventListener("change", function () {
+                page = 1;
+                render();
+            });
+        }
+        if (previous) {
+            previous.addEventListener("click", function () {
+                page--;
+                render();
+            });
+        }
+        if (next) {
+            next.addEventListener("click", function () {
+                page++;
+                render();
+            });
+        }
+        if (tabs) {
+            tabs.querySelectorAll("[data-result-tab]").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    activeKind = button.getAttribute("data-result-tab") || "Departure";
+                    page = 1;
+                    tabs.querySelectorAll("[data-result-tab]").forEach(function (item) {
+                        item.classList.toggle("active", item === button);
+                    });
+                    render();
+                });
+            });
+        }
+
+        bindCustomSelects(source);
+        render();
+    }
+
+    function formState(root) {
+        var data = {};
+        new FormData(root).forEach(function (value, key) {
+            if (key === "run" || key === "saveAlert") {
+                return;
+            }
+
+            if (data[key]) {
+                data[key] = data[key] + "," + value;
+            } else {
+                data[key] = value;
+            }
+        });
+        return data;
+    }
+
+    function restoreFormState(root) {
+        if (window.location.search || root.dataset.restoredSearchState === "true") {
+            return;
+        }
+
+        var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+        if (navigation && navigation.type === "reload") {
+            sessionStorage.removeItem(searchStateKey);
+            return;
+        }
+
+        var raw = sessionStorage.getItem(searchStateKey);
+        if (!raw) {
+            return;
+        }
+
+        try {
+            var data = JSON.parse(raw);
+            Object.keys(data).forEach(function (key) {
+                root.querySelectorAll("[name='" + CSS.escape(key) + "']").forEach(function (field) {
+                    if (field.type === "checkbox") {
+                        field.checked = String(data[key]).split(",").indexOf(field.value) >= 0;
+                    } else {
+                        field.value = data[key];
+                    }
+                });
+            });
+            root.dataset.restoredSearchState = "true";
+            bindTripMode(root);
+            syncDateMode(root);
+            bindCustomSelects(root);
+            bindCurrencyCombobox(root);
+        } catch {
+            sessionStorage.removeItem(searchStateKey);
+        }
+    }
+
+    function saveFormState(root) {
+        sessionStorage.setItem(searchStateKey, JSON.stringify(formState(root)));
+    }
+
+    function bindSearchSubmit(root) {
+        if (root.dataset.boundSearchSubmit === "true") {
+            return;
+        }
+
+        root.dataset.boundSearchSubmit = "true";
+        root.dataset.submitting = "false";
+        root.addEventListener("input", function () {
+            saveFormState(root);
+        });
+        root.addEventListener("change", function () {
+            saveFormState(root);
+        });
+        root.addEventListener("click", function (event) {
+            var submitter = event.target.closest("button[type='submit']");
+            if (submitter) {
+                clearAlertTargetValidity(root);
+            }
+        }, true);
+        root.addEventListener("submit", function (event) {
+            var isSaveAlert = event.submitter && event.submitter.name === "saveAlert";
+            clearAlertTargetValidity(root);
+            if (isSaveAlert && !validateAlertTargets(root)) {
+                event.preventDefault();
+                return;
+            }
+
+            if (!root.checkValidity()) {
+                return;
+            }
+
+            if (root.dataset.submitting === "true") {
+                event.preventDefault();
+                return;
+            }
+
+            root.dataset.submitting = "true";
+
+            root.querySelectorAll("[data-submit-intent]").forEach(function (field) {
+                field.remove();
+            });
+
+            if (event.submitter && event.submitter.name && event.submitter.value) {
+                var submitIntent = document.createElement("input");
+                submitIntent.type = "hidden";
+                submitIntent.name = event.submitter.name;
+                submitIntent.value = event.submitter.value;
+                submitIntent.setAttribute("data-submit-intent", event.submitter.name);
+                root.appendChild(submitIntent);
+            }
+
+            saveFormState(root);
+            var isSearch = event.submitter && event.submitter.name === "run";
+            var overlay = document.querySelector("[data-search-loading]");
+            var submitters = root.querySelectorAll("button[type='submit']");
+            submitters.forEach(function (button) {
+                button.disabled = true;
+            });
+            if (overlay && isSearch) {
+                overlay.hidden = false;
+            }
         });
     }
 
@@ -766,14 +1608,22 @@
             return;
         }
 
+        restoreFormState(root);
         bindRouteSwap(root);
         bindTripMode(root);
+        bindDateMode(root);
         bindDatePair(root);
         bindLocationAutocomplete(root);
+        bindCustomSelects(root);
+        bindTimeRanges(root);
         bindTravellerPanel(root);
         bindCurrencyCombobox(root);
         bindAlertTargets(root);
+        bindSearchSubmit(root);
+        cacheRenderedResults();
+        restoreResultsAfterAlertSave();
         bindFlightResultDetails();
+        bindResultPagination();
     }
 
     function scheduleSearchFormBinding() {

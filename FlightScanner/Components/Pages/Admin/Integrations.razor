@@ -22,8 +22,14 @@
             <label class="form-check-label" for="serpapi-enabled">@UiText.T("Enabled")</label>
         </div>
 
-        <label class="form-label" for="serpapi-key">@UiText.T("ApiKey")</label>
-        <input id="serpapi-key" class="form-control" type="password" name="apiKey" value="@Input.ApiKey" autocomplete="off" />
+        <label class="form-label" for="serpapi-keys">@UiText.T("ApiKeys")</label>
+        <textarea id="serpapi-keys"
+                  class="form-control secret-textarea"
+                  name="apiKeys"
+                  rows="5"
+                  autocomplete="off"
+                  spellcheck="false">@Input.ApiKeys</textarea>
+        <div class="form-text">@UiText.T("ApiKeysHelp")</div>
 
         <label class="form-label mt-3" for="alert-scan-interval">@UiText.T("AlertScanInterval")</label>
         <input id="alert-scan-interval"
@@ -64,7 +70,9 @@
         Input = new IntegrationForm
         {
             Enabled = setting.Enabled,
-            ApiKey = options.SerpApiApiKey,
+            ApiKeys = string.IsNullOrWhiteSpace(options.SerpApiApiKeys)
+                ? options.SerpApiApiKey
+                : options.SerpApiApiKeys,
             AlertScanIntervalMinutes = AlertScanOptions.NormalizeMinutes(options.AlertScanIntervalMinutes)
         };
     }
@@ -72,7 +80,7 @@
     private sealed class IntegrationForm
     {
         public bool Enabled { get; set; }
-        public string ApiKey { get; set; } = "";
+        public string ApiKeys { get; set; } = "";
         public int AlertScanIntervalMinutes { get; set; } = AlertScanOptions.DefaultIntervalMinutes;
     }
 }

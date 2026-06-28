@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mail;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using FlightScanner.Data;
@@ -22,16 +23,17 @@ public sealed class NotificationDispatcher(
 {
     public async Task DispatchPriceMatchAsync(PriceAlert alert, FlightOffer offer, CancellationToken cancellationToken = default)
     {
-        var subject = $"Flight alert: {offer.Origin} to {offer.Destination} at {offer.Price:0.##} {offer.Currency}";
-        var body = $"{offer.Airline} {offer.FlightNumber} is now {offer.Price:0.##} {offer.Currency} for {offer.DepartDate:yyyy-MM-dd}. Target: {alert.TargetPrice:0.##} {alert.Currency}.";
         var settings = await LoadSettingsAsync(cancellationToken);
+        var culture = NormalizeCulture(alert.User?.PreferredCulture);
+        var subject = BuildSubject(alert, offer, culture);
+        var body = BuildAlertMessage(alert, offer, culture);
 
         if (settings.Email.Enabled && !string.IsNullOrWhiteSpace(alert.User?.Email))
         {
             await SendEmailAsync(alert, alert.User.Email, subject, body, settings.Email.Options, cancellationToken);
         }
 
-        var whatsAppRecipient = alert.WhatsAppTo ?? alert.User?.PhoneNumber;
+        var whatsAppRecipient = FirstNonEmpty(alert.WhatsAppTo, settings.WhatsApp.Options.To, alert.User?.PhoneNumber);
         if (settings.WhatsApp.Enabled && !string.IsNullOrWhiteSpace(whatsAppRecipient))
         {
             await SendWhatsAppAsync(alert, whatsAppRecipient, subject, body, settings.WhatsApp.Options, cancellationToken);
@@ -96,7 +98,7 @@ public sealed class NotificationDispatcher(
         {
             var request = new HttpRequestMessage(new HttpMethod(options.HttpMethod), options.EndpointUrl)
             {
-                Content = new StringContent(RenderWhatsAppBody(options.BodyTemplate, recipient, body), Encoding.UTF8, "application/json")
+                Content = new StringContent(RenderWhatsAppBody(options.BodyTemplate, recipient, subject, body), Encoding.UTF8, "application/json")
             };
 
             foreach (var header in ParseHeaders(options.HeadersJson))
@@ -144,11 +146,198 @@ public sealed class NotificationDispatcher(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static string RenderWhatsAppBody(string template, string recipient, string message)
+    private static string RenderWhatsAppBody(string template, string recipient, string subject, string message)
     {
+        template = string.IsNullOrWhiteSpace(template)
+            ? "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}"
+            : template;
+
         return template
-            .Replace("{{to}}", recipient, StringComparison.OrdinalIgnoreCase)
-            .Replace("{{message}}", message, StringComparison.OrdinalIgnoreCase);
+            .Replace("{{to}}", JsonStringValue(recipient), StringComparison.OrdinalIgnoreCase)
+            .Replace("{{subject}}", JsonStringValue(subject), StringComparison.OrdinalIgnoreCase)
+            .Replace("{{message}}", JsonStringValue(message), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string JsonStringValue(string value)
+    {
+        var serialized = JsonSerializer.Serialize(value);
+        return serialized.Length >= 2 ? serialized[1..^1] : value;
+    }
+
+    private static string BuildSubject(PriceAlert alert, FlightOffer offer, string culture)
+    {
+        return culture switch
+        {
+            "fr" => $"Alerte vol : {alert.Origin} vers {alert.Destination} a {offer.Price:0.##} {offer.Currency}",
+            "ar" => $"تنبيه رحلة: {alert.Origin} إلى {alert.Destination} بسعر {offer.Price:0.##} {offer.Currency}",
+            _ => $"Flight alert: {alert.Origin} to {alert.Destination} at {offer.Price:0.##} {offer.Currency}"
+        };
+    }
+
+    private static string BuildAlertMessage(PriceAlert alert, FlightOffer offer, string culture)
+    {
+        var target = TargetText(alert, culture);
+        var trip = alert.ReturnFrom is null
+            ? Text(culture, "One way", "Aller simple", "ذهاب فقط")
+            : Text(culture, "Round trip", "Aller-retour", "ذهاب وعودة");
+        var dates = alert.FlexibleDates
+            ? FlexibleDatesText(alert, offer, culture)
+            : alert.ReturnFrom is null
+                ? FormatDate(alert.DepartFrom, culture)
+                : $"{FormatDate(alert.DepartFrom, culture)} -> {FormatDate(alert.ReturnFrom.Value, culture)}";
+        var travellers = TravellersText(alert, culture);
+        var stops = offer.Stops <= 0
+            ? Text(culture, "Direct", "Direct", "مباشر")
+            : string.Format(CultureInfo.InvariantCulture, Text(culture, "{0} stop(s)", "{0} escale(s)", "{0} توقف"), offer.Stops);
+        var routeWord = Text(culture, "Route", "Trajet", "المسار");
+        var tripWord = Text(culture, "Trip", "Voyage", "الرحلة");
+        var travellersWord = Text(culture, "Travellers", "Voyageurs", "المسافرون");
+        var priceWord = Text(culture, "Price", "Prix", "السعر");
+        var flightWord = Text(culture, "Flight", "Vol", "الطيران");
+        var currentFare = Text(culture, "Current fare", "Tarif actuel", "السعر الحالي");
+        var targetWord = Text(culture, "Your target", "Votre objectif", "السعر المستهدف");
+        var airlineWord = Text(culture, "Airline", "Compagnie", "شركة الطيران");
+        var stopsWord = Text(culture, "Stops", "Escales", "التوقفات");
+        var travelTime = Text(culture, "Travel time", "Duree", "مدة الرحلة");
+        var openText = Text(culture, "View details and booking options", "Voir les details et options de reservation", "عرض التفاصيل وخيارات الحجز");
+        var intro = Text(
+            culture,
+            "Good news! Your reminder just matched",
+            "Bonne nouvelle ! Votre rappel vient de correspondre",
+            "خبر رائع! التذكير الخاص بك تحقق");
+
+        return $"""
+            ✈️ {Text(culture, "Flight Price Alert", "Alerte prix de vol", "تنبيه سعر الرحلة")}
+
+            {intro} 🎯
+
+            🌍 {routeWord}
+            {alert.Origin} → {alert.Destination}
+
+            📅 {tripWord}
+            {trip}
+            {dates}
+
+            👤 {travellersWord}
+            {travellers}
+
+            💸 {priceWord}
+            {currentFare}: {offer.Price:0.##} {offer.Currency}
+            {targetWord}: {target}
+
+            🛫 {flightWord}
+            {airlineWord}: {offer.Airline}
+            {stopsWord}: {stops}
+            {travelTime}: {FormatDuration(offer.Duration)}
+
+            🔎 {openText}:
+            https://flight.veoxer.com/alerts
+            """;
+    }
+
+    private static string TargetText(PriceAlert alert, string culture)
+    {
+        var maxTarget = alert.MaxTargetPrice ?? (!alert.TargetMode.Equals("Min", StringComparison.OrdinalIgnoreCase) && alert.TargetPrice > 0 ? alert.TargetPrice : null);
+        var minTarget = alert.MinTargetPrice ?? (alert.TargetMode.Equals("Min", StringComparison.OrdinalIgnoreCase) && alert.TargetPrice > 0 ? alert.TargetPrice : null);
+        var parts = new List<string>();
+        if (maxTarget is { } max)
+        {
+            parts.Add($"{Text(culture, "under", "sous", "أقل من")} {max:0.##} {alert.Currency}");
+        }
+
+        if (minTarget is { } min)
+        {
+            parts.Add($"{Text(culture, "over", "au-dessus de", "أكثر من")} {min:0.##} {alert.Currency}");
+        }
+
+        return parts.Count == 0 ? $"{alert.TargetPrice:0.##} {alert.Currency}" : string.Join(" / ", parts);
+    }
+
+    private static string TravellersText(PriceAlert alert, string culture)
+    {
+        var adults = string.Format(
+            CultureInfo.InvariantCulture,
+            Text(culture, "{0} adult", "{0} adulte", "{0} بالغ"),
+            Math.Max(1, alert.Adults));
+        var children = alert.Children > 0
+            ? " · " + string.Format(CultureInfo.InvariantCulture, Text(culture, "{0} child", "{0} enfant", "{0} طفل"), alert.Children)
+            : "";
+        return $"{adults}{children} · {alert.Cabin}";
+    }
+
+    private static string FlexibleDatesText(PriceAlert alert, FlightOffer offer, string culture)
+    {
+        var cultureInfo = CultureInfoFor(culture);
+        var month = alert.FlexibleMonth is >= 1 and <= 12
+            ? cultureInfo.DateTimeFormat.GetMonthName(alert.FlexibleMonth.Value)
+            : Text(culture, "selected month", "mois choisi", "الشهر المحدد");
+        var weekday = alert.FlexibleDepartureDay is { } departureDay
+            ? cultureInfo.DateTimeFormat.GetDayName(departureDay)
+            : Text(culture, "selected weekday", "jour choisi", "اليوم المحدد");
+        var matched = offer.ReturnDate is { } returnDate
+            ? $"{FormatDate(offer.DepartDate, culture)} -> {FormatDate(returnDate, culture)}"
+            : FormatDate(offer.DepartDate, culture);
+
+        if (alert.ReturnFrom is null)
+        {
+            return Text(
+                culture,
+                $"Flexible: {month} {alert.FlexibleYear}, {weekday}\nMatched: {matched}",
+                $"Flexible : {month} {alert.FlexibleYear}, {weekday}\nCorrespondance : {matched}",
+                $"مرن: {month} {alert.FlexibleYear}، {weekday}\nالمطابقة: {matched}");
+        }
+
+        var stay = alert.FlexibleStayDays ?? 1;
+
+        return Text(
+            culture,
+            $"Flexible: {month} {alert.FlexibleYear}, {weekday}, {stay} day stay\nMatched: {matched}",
+            $"Flexible : {month} {alert.FlexibleYear}, {weekday}, sejour de {stay} jours\nCorrespondance : {matched}",
+            $"مرن: {month} {alert.FlexibleYear}، {weekday}، إقامة {stay} أيام\nالمطابقة: {matched}");
+    }
+
+    private static string FormatDate(DateOnly date, string culture)
+    {
+        return date.ToString("dd/MM/yyyy", CultureInfoFor(culture));
+    }
+
+    private static CultureInfo CultureInfoFor(string culture)
+    {
+        return culture switch
+        {
+            "fr" => CultureInfo.GetCultureInfo("fr-FR"),
+            "ar" => CultureInfo.GetCultureInfo("ar-MA"),
+            _ => CultureInfo.GetCultureInfo("en-US")
+        };
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        return duration <= TimeSpan.Zero ? "N/A" : $"{(int)duration.TotalHours} h {duration.Minutes:00} m";
+    }
+
+    private static string NormalizeCulture(string? culture)
+    {
+        return culture?.Equals("fr", StringComparison.OrdinalIgnoreCase) == true
+            ? "fr"
+            : culture?.Equals("ar", StringComparison.OrdinalIgnoreCase) == true
+                ? "ar"
+                : "en";
+    }
+
+    private static string Text(string culture, string en, string fr, string ar)
+    {
+        return culture switch
+        {
+            "fr" => fr,
+            "ar" => ar,
+            _ => en
+        };
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
     }
 
     private static Dictionary<string, string> ParseHeaders(string headersJson)
