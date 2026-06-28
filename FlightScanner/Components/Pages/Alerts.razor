@@ -107,13 +107,25 @@ else
                     </form>
                     <form method="post" action="@($"/alerts/{alert.Id}/delete")" class="inline-action-form">
                         <AntiforgeryToken />
-                        <button type="submit" class="btn btn-sm btn-outline-danger">@UiText.T("Delete")</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-confirm-delete-alert>@UiText.T("Delete")</button>
                     </form>
                 </div>
             </details>
         }
     </div>
 }
+
+<div class="confirm-modal" data-alert-delete-modal hidden>
+    <div class="confirm-backdrop" data-alert-delete-cancel></div>
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-alert-title">
+        <h2 id="delete-alert-title">@UiText.T("ConfirmDeleteAlertTitle")</h2>
+        <p>@UiText.T("ConfirmDeleteAlertText")</p>
+        <div class="confirm-actions">
+            <button type="button" class="btn btn-outline-secondary" data-alert-delete-cancel>@UiText.T("Cancel")</button>
+            <button type="button" class="btn btn-danger" data-alert-delete-confirm>@UiText.T("ConfirmDelete")</button>
+        </div>
+    </div>
+</div>
 
 <h2 class="mt-4">@UiText.T("RecentNotifications")</h2>
 <div class="table-responsive">

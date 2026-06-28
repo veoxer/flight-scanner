@@ -29,6 +29,11 @@
             <hr />
             <ValidationSummary class="text-danger" role="alert" />
             <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.DisplayName" id="Input.DisplayName" class="form-control" autocomplete="name" aria-required="true" placeholder="@UiText.T("DisplayName")" />
+                <label for="Input.DisplayName">@UiText.T("DisplayName")</label>
+                <ValidationMessage For="() => Input.DisplayName" class="text-danger" />
+            </div>
+            <div class="form-floating mb-3">
                 <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com" />
                 <label for="Input.Email">@UiText.T("Email")</label>
                 <ValidationMessage For="() => Input.Email" class="text-danger" />
@@ -64,7 +69,7 @@
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    private string? Message => identityErrors is null ? null : $"Error: {string.Join(", ", identityErrors.Select(error => error.Description))}";
+    private string? Message => identityErrors is null ? null : $"{UiText.T("ErrorPrefix")}: {string.Join(", ", identityErrors.Select(error => error.Description))}";
 
     protected override void OnInitialized()
     {
@@ -74,6 +79,7 @@
     public async Task RegisterUser(EditContext editContext)
     {
         var user = CreateUser();
+        user.DisplayName = Input.DisplayName.Trim();
 
         await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
         var emailStore = GetEmailStore();
@@ -135,20 +141,24 @@
 
     private sealed class InputModel
     {
-        [Required]
-        [EmailAddress]
+        [LocalizedRequired("DisplayName")]
+        [Display(Name = "Display name")]
+        public string DisplayName { get; set; } = "";
+
+        [LocalizedRequired("Email")]
+        [LocalizedEmailAddress("Email")]
         [Display(Name = "Email")]
         public string Email { get; set; } = "";
 
-        [Required]
-        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [LocalizedRequired("Password")]
+        [StringLength(100)]
         [DataType(DataType.Password)]
         [Display(Name = "Password")]
         public string Password { get; set; } = "";
 
         [DataType(DataType.Password)]
         [Display(Name = "Confirm password")]
-        [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+        [LocalizedCompare("Password", "PasswordsDoNotMatch")]
         public string ConfirmPassword { get; set; } = "";
     }
 }

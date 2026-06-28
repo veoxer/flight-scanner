@@ -4,6 +4,7 @@
 @using System.Collections.Concurrent
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
+@using FlightScanner.Features.Integrations
 @using FlightScanner.Features.Localization
 @inject IFlightSearchService FlightSearch
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
@@ -221,11 +222,7 @@
 
         <div class="flight-filter-row">
             <label class="filter-check">
-                <input type="checkbox" name="originNearby" value="true" checked="@OriginNearby" />
-                <span>@T("AddNearbyAirports")</span>
-            </label>
-            <label class="filter-check">
-                <input type="checkbox" name="destinationNearby" value="true" checked="@DestinationNearby" />
+                <input type="checkbox" name="nearbyAirports" value="true" checked="@NearbyAirports" />
                 <span>@T("AddNearbyAirports")</span>
             </label>
             <label class="filter-check">
@@ -295,7 +292,7 @@
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
-    <div class="alert alert-info mt-3">@message</div>
+    <div class="alert @(messageIsError ? "alert-danger" : "alert-info") mt-3">@message</div>
 }
 
 <div data-results-cache-target>
@@ -583,6 +580,9 @@
     [Parameter, SupplyParameterFromQuery(Name = "directOnly")]
     public bool DirectOnly { get; set; }
 
+    [Parameter, SupplyParameterFromQuery(Name = "nearbyAirports")]
+    public bool NearbyAirports { get; set; }
+
     [Parameter, SupplyParameterFromQuery(Name = "originNearby")]
     public bool OriginNearby { get; set; }
 
@@ -660,6 +660,7 @@
     private IReadOnlyList<AirlineSearchLink> airlineLinks = [];
     private List<FlightLocation> locations = [];
     private string? message;
+    private bool messageIsError;
     private readonly HashSet<string> processedExecutionKeys = [];
     private static readonly TimeSpan SearchPageCacheDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan AlertSaveGateDuration = TimeSpan.FromSeconds(20);
@@ -702,8 +703,11 @@
             return;
         }
 
-        if (!TryBuildQuery(out var query, out message))
+        SetMessage(null);
+
+        if (!TryBuildQuery(out var query, out var validationMessage))
         {
+            SetMessage(validationMessage, isError: true);
             return;
         }
 
@@ -727,7 +731,7 @@
 
         if (offers.Count == 0)
         {
-            message = T("NoLiveProvider");
+            SetMessage(T("NoLiveProvider"));
         }
     }
 
@@ -914,22 +918,17 @@
         var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrWhiteSpace(userId))
         {
-            message = T("LoginExpired");
+            SetMessage(T("LoginExpired"), isError: true);
             return;
         }
 
-        if (!TryParseTargetFilters(out var maxTargetPrice, out var minTargetPrice, out message))
+        if (!TryParseTargetFilters(out var maxTargetPrice, out var minTargetPrice, out var targetMessage))
         {
+            SetMessage(targetMessage, isError: true);
             return;
         }
 
         var alertSaveKey = BuildAlertSaveKey(userId, query, maxTargetPrice, minTargetPrice);
-        if (!TryEnterAlertSaveGate(alertSaveKey))
-        {
-            message = T("AlertSaved");
-            return;
-        }
-
         await using var db = await DbFactory.CreateDbContextAsync();
         try
         {
@@ -965,7 +964,20 @@
 
             if (duplicateExists)
             {
-                message = T("AlertAlreadySaved");
+                SetMessage(T("AlertAlreadySaved"), isError: true);
+                return;
+            }
+
+            var policyMessage = await ValidateAlertPolicyAsync(db, userId, query.FlexibleDates);
+            if (!string.IsNullOrWhiteSpace(policyMessage))
+            {
+                SetMessage(policyMessage, isError: true);
+                return;
+            }
+
+            if (!TryEnterAlertSaveGate(alertSaveKey))
+            {
+                SetMessage(T("AlertSaved"));
                 return;
             }
 
@@ -1003,13 +1015,65 @@
                 MinTargetPrice = minTargetPrice
             });
             await db.SaveChangesAsync();
-            message = T("AlertSaved");
+            SetMessage(T("AlertSaved"));
         }
         catch
         {
             RecentAlertSaveKeys.TryRemove(alertSaveKey, out _);
             throw;
         }
+    }
+
+    private void SetMessage(string? value, bool isError = false)
+    {
+        message = value;
+        messageIsError = isError;
+    }
+
+    private async Task<string?> ValidateAlertPolicyAsync(ApplicationDbContext db, string userId, bool flexibleDates)
+    {
+        var setting = await db.IntegrationSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.AlertPolicy);
+        var policy = setting is null
+            ? new AlertPolicyOptions()
+            : System.Text.Json.JsonSerializer.Deserialize<AlertPolicyOptions>(
+                setting.SettingsJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+
+        if (policy.MaxAlertsPerUser <= 0 &&
+            policy.MaxFlexibleAlertsPerUser <= 0 &&
+            policy.MaxSpecificAlertsPerUser <= 0)
+        {
+            return null;
+        }
+
+        var existingAlerts = await db.PriceAlerts
+            .AsNoTracking()
+            .Where(alert => alert.UserId == userId)
+            .Select(alert => alert.FlexibleDates)
+            .ToListAsync();
+
+        if (policy.MaxAlertsPerUser > 0 && existingAlerts.Count >= policy.MaxAlertsPerUser)
+        {
+            return T("AlertLimitReached");
+        }
+
+        if (flexibleDates &&
+            policy.MaxFlexibleAlertsPerUser > 0 &&
+            existingAlerts.Count(alert => alert) >= policy.MaxFlexibleAlertsPerUser)
+        {
+            return T("FlexibleAlertLimitReached");
+        }
+
+        if (!flexibleDates &&
+            policy.MaxSpecificAlertsPerUser > 0 &&
+            existingAlerts.Count(alert => !alert) >= policy.MaxSpecificAlertsPerUser)
+        {
+            return T("SpecificAlertLimitReached");
+        }
+
+        return null;
     }
 
     private bool TryBuildQuery(out FlightSearchQuery query, out string? validationMessage)
@@ -1160,6 +1224,7 @@
         TripType = IsOneWay ? "OneWay" : "Return";
         DateMode = IsFlexibleDates ? "Flexible" : "Specific";
         TargetFilterCount = Math.Clamp(TargetFilterCount, 1, 2);
+        NearbyAirports = NearbyAirports || OriginNearby || DestinationNearby;
         var defaultFlexibleDate = DateTime.Today.AddDays(30);
         FlexibleYear ??= defaultFlexibleDate.Year;
         FlexibleMonth = FlexibleMonth is >= 1 and <= 12 ? FlexibleMonth : defaultFlexibleDate.Month;

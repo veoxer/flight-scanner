@@ -7,7 +7,8 @@ public enum IntegrationKind
     FlightProvider = 0,
     Email = 1,
     WhatsApp = 2,
-    WebPush = 3
+    WebPush = 3,
+    AlertPolicy = 4
 }
 
 public sealed class IntegrationSetting
@@ -70,4 +71,11 @@ public sealed class WebPushOptions
     public string PublicKey { get; set; } = "";
     public string PrivateKey { get; set; } = "";
     public string Subject { get; set; } = "mailto:admin@example.com";
+}
+
+public sealed class AlertPolicyOptions
+{
+    public int MaxAlertsPerUser { get; set; }
+    public int MaxFlexibleAlertsPerUser { get; set; }
+    public int MaxSpecificAlertsPerUser { get; set; }
 }

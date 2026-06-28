@@ -1,6 +1,8 @@
 @page "/admin/users"
 @attribute [Authorize(Roles = "Admin")]
+@using System.Text.Json
 @using FlightScanner.Features.Localization
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>@UiText.T("Users")</PageTitle>
@@ -35,6 +37,26 @@
     <button type="button" class="btn btn-primary mt-3" @onclick="CreateUserAsync">@UiText.T("CreateUser")</button>
 </EditForm>
 
+<EditForm Model="alertPolicy" FormName="admin-alert-policy" class="tool-surface mb-4">
+    <h2>@UiText.T("AlertLimits")</h2>
+    <p class="settings-note">@UiText.T("AlertLimitsText")</p>
+    <div class="search-grid">
+        <div>
+            <label class="form-label">@UiText.T("MaxAlertsPerUser")</label>
+            <InputNumber class="form-control" @bind-Value="alertPolicy.MaxAlertsPerUser" min="0" />
+        </div>
+        <div>
+            <label class="form-label">@UiText.T("MaxFlexibleAlertsPerUser")</label>
+            <InputNumber class="form-control" @bind-Value="alertPolicy.MaxFlexibleAlertsPerUser" min="0" />
+        </div>
+        <div>
+            <label class="form-label">@UiText.T("MaxSpecificAlertsPerUser")</label>
+            <InputNumber class="form-control" @bind-Value="alertPolicy.MaxSpecificAlertsPerUser" min="0" />
+        </div>
+    </div>
+    <button type="button" class="btn btn-primary mt-3" @onclick="SaveAlertPolicyAsync">@UiText.T("SaveAlertLimits")</button>
+</EditForm>
+
 <div class="table-responsive">
     <table class="table align-middle">
         <thead>
@@ -65,7 +87,9 @@
 </div>
 
 @code {
+    private readonly JsonSerializerOptions jsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly NewUserInput newUser = new();
+    private AlertPolicyOptions alertPolicy = new();
     private List<UserRow> rows = [];
     private string? message;
 
@@ -83,6 +107,8 @@
             {
                 rows.Add(new UserRow(user, await UserManager.GetRolesAsync(user)));
             }
+
+            await LoadAlertPolicyAsync();
         }
         catch (Exception ex)
         {
@@ -149,6 +175,38 @@
         }
 
         await LoadAsync();
+    }
+
+    private async Task LoadAlertPolicyAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var setting = await db.IntegrationSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.AlertPolicy);
+        alertPolicy = setting is null
+            ? new AlertPolicyOptions()
+            : JsonSerializer.Deserialize<AlertPolicyOptions>(setting.SettingsJson, jsonOptions) ?? new AlertPolicyOptions();
+    }
+
+    private async Task SaveAlertPolicyAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.AlertPolicy);
+        if (setting is null)
+        {
+            setting = new IntegrationSetting { Kind = IntegrationKind.AlertPolicy, Enabled = true };
+            db.IntegrationSettings.Add(setting);
+        }
+
+        alertPolicy.MaxAlertsPerUser = Math.Max(0, alertPolicy.MaxAlertsPerUser);
+        alertPolicy.MaxFlexibleAlertsPerUser = Math.Max(0, alertPolicy.MaxFlexibleAlertsPerUser);
+        alertPolicy.MaxSpecificAlertsPerUser = Math.Max(0, alertPolicy.MaxSpecificAlertsPerUser);
+
+        setting.Enabled = true;
+        setting.SettingsJson = JsonSerializer.Serialize(alertPolicy, jsonOptions);
+        setting.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        message = UiText.T("AlertLimitsSaved");
     }
 
     private sealed class NewUserInput

@@ -953,6 +953,7 @@ public sealed class StartupInitializer(
                 PrivateKey = configuration["VAPID_PRIVATE_KEY"] ?? "",
                 Subject = configuration["VAPID_SUBJECT"] ?? "mailto:admin@example.com"
             }),
+            IntegrationKind.AlertPolicy => Serialize(new AlertPolicyOptions()),
             _ => "{}"
         };
     }

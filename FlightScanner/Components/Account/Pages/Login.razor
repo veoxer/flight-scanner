@@ -102,7 +102,7 @@
     {
         if (!string.IsNullOrEmpty(Input.Passkey?.Error))
         {
-            errorMessage = $"Error: {Input.Passkey.Error}";
+            errorMessage = $"{UiText.T("ErrorPrefix")}: {Input.Passkey.Error}";
             return;
         }
 
@@ -149,11 +149,11 @@
 
     private sealed class InputModel
     {
-        [Required]
-        [EmailAddress]
+        [LocalizedRequired("Email")]
+        [LocalizedEmailAddress("Email")]
         public string Email { get; set; } = "";
 
-        [Required]
+        [LocalizedRequired("Password")]
         [DataType(DataType.Password)]
         public string Password { get; set; } = "";
 
