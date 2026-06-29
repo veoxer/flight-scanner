@@ -786,6 +786,141 @@
         return false;
     }
 
+    function priceAlertLimitMessage(openButton) {
+        if (!openButton) {
+            return "";
+        }
+
+        function over(activeName, policyName, messageName) {
+            var limit = Number(openButton.getAttribute(policyName) || 0);
+            var active = Number(openButton.getAttribute(activeName) || 0);
+            if (limit > 0 && active >= limit) {
+                return String(openButton.getAttribute(messageName) || "").replace("{0}", String(limit));
+            }
+
+            return "";
+        }
+
+        return over("data-active-total", "data-policy-max", "data-total-limit-message") ||
+            (openButton.getAttribute("data-alert-kind") === "Flexible"
+                ? over("data-active-flexible", "data-policy-flexible", "data-flexible-limit-message")
+                : over("data-active-specific", "data-policy-specific", "data-specific-limit-message"));
+    }
+
+    function setPriceAlertError(modal, message) {
+        var error = modal && modal.querySelector("[data-price-alert-error]");
+        if (!error) {
+            return;
+        }
+
+        error.textContent = message || "";
+        error.hidden = !message;
+    }
+
+    function validatePriceAlertModal() {
+        var modal = document.querySelector("[data-price-alert-modal]");
+        if (!modal) {
+            return true;
+        }
+
+        var maxInput = modal.querySelector("[data-alert-max-price]");
+        var minInput = modal.querySelector("[data-alert-min-price]");
+        if (!maxInput || !minInput) {
+            return true;
+        }
+
+        [maxInput, minInput].forEach(function (input) {
+            input.setCustomValidity("");
+            input.classList.remove("is-invalid");
+        });
+        setPriceAlertError(modal, "");
+
+        var maxValue = maxInput.value ? Number(maxInput.value) : null;
+        var minValue = minInput.value ? Number(minInput.value) : null;
+        var requiredMessage = modal.getAttribute("data-required-message") || "Enter a max fare, min fare, or both.";
+        var orderMessage = modal.getAttribute("data-order-message") || "Minimum fare cannot be greater than maximum fare.";
+
+        if (maxValue === null && minValue === null) {
+            maxInput.setCustomValidity(requiredMessage);
+            maxInput.classList.add("is-invalid");
+            minInput.classList.add("is-invalid");
+            setPriceAlertError(modal, requiredMessage);
+            maxInput.reportValidity();
+            return false;
+        }
+
+        if ((maxValue !== null && (!Number.isFinite(maxValue) || maxValue <= 0)) ||
+            (minValue !== null && (!Number.isFinite(minValue) || minValue <= 0))) {
+            var invalid = maxValue !== null && (!Number.isFinite(maxValue) || maxValue <= 0) ? maxInput : minInput;
+            invalid.setCustomValidity(requiredMessage);
+            invalid.classList.add("is-invalid");
+            setPriceAlertError(modal, requiredMessage);
+            invalid.reportValidity();
+            return false;
+        }
+
+        if (maxValue !== null && minValue !== null && minValue > maxValue) {
+            minInput.setCustomValidity(orderMessage);
+            minInput.classList.add("is-invalid");
+            setPriceAlertError(modal, orderMessage);
+            minInput.reportValidity();
+            return false;
+        }
+
+        return true;
+    }
+
+    function bindPriceAlertModal() {
+        var modal = document.querySelector("[data-price-alert-modal]");
+        if (!modal) {
+            return;
+        }
+
+        var maxInput = modal.querySelector("[data-alert-max-price]");
+        var minInput = modal.querySelector("[data-alert-min-price]");
+
+        function open(openButton) {
+            modal.hidden = false;
+            document.body.classList.add("modal-open");
+            setPriceAlertError(modal, priceAlertLimitMessage(openButton));
+            (maxInput || minInput)?.focus();
+        }
+
+        function close() {
+            modal.hidden = true;
+            document.body.classList.remove("modal-open");
+        }
+
+        document.querySelectorAll("[data-price-alert-open]").forEach(function (button) {
+            if (button.dataset.boundPriceAlertOpen === "true") {
+                return;
+            }
+
+            button.dataset.boundPriceAlertOpen = "true";
+            button.addEventListener("click", function () {
+                open(button);
+            });
+        });
+
+        if (modal.dataset.boundPriceAlertModal !== "true") {
+            modal.dataset.boundPriceAlertModal = "true";
+            modal.querySelectorAll("[data-price-alert-close]").forEach(function (button) {
+                button.addEventListener("click", close);
+            });
+            [maxInput, minInput].forEach(function (input) {
+                if (!input) {
+                    return;
+                }
+
+                input.addEventListener("input", function () {
+                    input.setCustomValidity("");
+                    input.classList.remove("is-invalid");
+                    setPriceAlertError(modal, "");
+                });
+            });
+        }
+    }
+
     function createOption(item, input, typeInput, codeInput, menu) {
         var button = document.createElement("button");
         button.type = "button";
@@ -997,6 +1132,55 @@
             .replace(/'/g, "&#39;");
     }
 
+    function airlineLogoCode(airline) {
+        var trimmed = String(airline || "").trim();
+        if (/^[a-z0-9]{2,3}$/i.test(trimmed)) {
+            return trimmed.toUpperCase();
+        }
+
+        var known = {
+            "american airlines": "AA",
+            "delta air lines": "DL",
+            "united airlines": "UA",
+            "british airways": "BA",
+            "lufthansa": "LH",
+            "air france": "AF",
+            "klm": "KL",
+            "iberia": "IB",
+            "royal air maroc": "AT",
+            "emirates": "EK",
+            "qatar airways": "QR",
+            "turkish airlines": "TK",
+            "easyjet": "U2",
+            "ryanair": "FR"
+        };
+        var normalized = trimmed.toLowerCase();
+        if (known[normalized]) {
+            return known[normalized];
+        }
+
+        var compact = trimmed.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
+        return (compact || "XX").padEnd(2, "X");
+    }
+
+    function airlineLogoUrl(offer) {
+        if (offer && offer.airlineLogoUrl) {
+            return offer.airlineLogoUrl;
+        }
+
+        return "https://images.kiwi.com/airlines/64/" + encodeURIComponent(airlineLogoCode(offer && offer.airline)) + ".png";
+    }
+
+    function airlineInitials(airline) {
+        var words = String(airline || "").trim().split(/\s+/).filter(Boolean);
+        if (words.length >= 2) {
+            return (words[0][0] + words[1][0]).toUpperCase();
+        }
+
+        var compact = String(airline || "A").replace(/[^a-z0-9]/gi, "");
+        return compact.slice(0, 2).toUpperCase() || "A";
+    }
+
     function renderReturnLeg(details, offer) {
         var leg = offer && offer.itineraryLegs && offer.itineraryLegs.length ? offer.itineraryLegs[0] : null;
         if (!leg) {
@@ -1074,12 +1258,14 @@
         var leg = offer && offer.itineraryLegs && offer.itineraryLegs.length ? offer.itineraryLegs[0] : null;
         var currency = offer.currency || result.getAttribute("data-currency") || "MAD";
         var symbol = result.getAttribute("data-price-symbol") || "";
+        var logoUrl = airlineLogoUrl(offer);
+        var initials = airlineInitials(offer && offer.airline);
         var route = leg && leg.segments && leg.segments.length
             ? airportLabel(leg.segments[0].departureAirport) + " to " + airportLabel(leg.segments[leg.segments.length - 1].arrivalAirport)
             : (offer.origin || "") + " to " + (offer.destination || "");
         var html = '<details class="result-card itinerary-result return-option-card" data-return-option><summary class="result-summary">' +
-            '<div class="airline-identity"><span class="airline-logo-fallback">' + escapeHtml((offer.airline || "A").slice(0, 2).toUpperCase()) +
-            '</span><span><strong>' +
+            '<div class="airline-identity"><span class="airline-logo-fallback">' + escapeHtml(initials) +
+            '</span><img class="airline-logo" src="' + escapeHtml(logoUrl) + '" alt="" loading="lazy" onload="this.previousElementSibling.hidden=true" onerror="this.hidden=true" /><span><strong>' +
             escapeHtml(offer.airline || result.dataset.returnTitle || "Return flight") +
             ' ' + escapeHtml(offer.flightNumber || "") +
             '</strong><span>' + escapeHtml(offer.provider || "") + '</span></span></div><div><strong>' +
@@ -1343,6 +1529,43 @@
         return new URLSearchParams(window.location.search).get("saveAlert") === "true";
     }
 
+    function scrubAlertSaveIntentUrl() {
+        if (!isAlertSaveNavigation() || !window.history || !window.history.replaceState) {
+            return;
+        }
+
+        var url = new URL(window.location.href);
+        url.searchParams.delete("saveAlert");
+        window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    }
+
+    function resetSearchSubmissionUi(root) {
+        root.dataset.submitting = "false";
+        delete root.dataset.submitStartedAt;
+        root.querySelectorAll("button[type='submit']").forEach(function (button) {
+            button.disabled = false;
+        });
+
+        var overlay = document.querySelector("[data-search-loading]");
+        if (overlay) {
+            overlay.hidden = true;
+        }
+    }
+
+    function shouldResetSearchSubmissionUi(root) {
+        if (root.dataset.submitting !== "true") {
+            return true;
+        }
+
+        var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+        if (Boolean(document.querySelector("[data-results-cache-source]")) || (navigation && navigation.type === "back_forward")) {
+            return true;
+        }
+
+        var startedAt = Number(root.dataset.submitStartedAt || 0);
+        return startedAt > 0 && Date.now() - startedAt > 10 * 60 * 1000;
+    }
+
     function cacheRenderedResults() {
         var source = document.querySelector("[data-results-cache-source]");
         if (!source) {
@@ -1375,6 +1598,8 @@
         wrapper.innerHTML = html;
         target.replaceChildren(wrapper);
         bindFlightResultDetails();
+        bindPriceAlertModal();
+        bindResultPagination();
     }
 
     function bindResultPagination() {
@@ -1559,7 +1784,7 @@
         root.addEventListener("submit", function (event) {
             var isSaveAlert = event.submitter && event.submitter.name === "saveAlert";
             clearAlertTargetValidity(root);
-            if (isSaveAlert && !validateAlertTargets(root)) {
+            if (isSaveAlert && !validatePriceAlertModal()) {
                 event.preventDefault();
                 return;
             }
@@ -1574,6 +1799,7 @@
             }
 
             root.dataset.submitting = "true";
+            root.dataset.submitStartedAt = String(Date.now());
 
             root.querySelectorAll("[data-submit-intent]").forEach(function (field) {
                 field.remove();
@@ -1609,6 +1835,9 @@
         }
 
         restoreFormState(root);
+        if (shouldResetSearchSubmissionUi(root)) {
+            resetSearchSubmissionUi(root);
+        }
         bindRouteSwap(root);
         bindTripMode(root);
         bindDateMode(root);
@@ -1618,10 +1847,11 @@
         bindTimeRanges(root);
         bindTravellerPanel(root);
         bindCurrencyCombobox(root);
-        bindAlertTargets(root);
+        bindPriceAlertModal();
         bindSearchSubmit(root);
         cacheRenderedResults();
         restoreResultsAfterAlertSave();
+        scrubAlertSaveIntentUrl();
         bindFlightResultDetails();
         bindResultPagination();
     }

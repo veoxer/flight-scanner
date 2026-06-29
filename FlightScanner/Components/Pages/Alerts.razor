@@ -21,6 +21,11 @@
 </div>
 <div class="notification-status" data-notification-status hidden></div>
 
+@if (!string.IsNullOrWhiteSpace(AlertErrorMessage))
+{
+    <div class="alert alert-danger mt-3">@AlertErrorMessage</div>
+}
+
 @if (alerts.Count == 0)
 {
     <div class="empty-state">
@@ -156,6 +161,19 @@ else
     private List<PriceAlert> alerts = [];
     private List<NotificationAttempt> attempts = [];
     private string? userId;
+
+    [Parameter, SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "limit")]
+    public int? Limit { get; set; }
+
+    private string? AlertErrorMessage => Error switch
+    {
+        "ActiveAlertLimitReached" or "ActiveFlexibleAlertLimitReached" or "ActiveSpecificAlertLimitReached"
+            when Limit is { } limit => string.Format(CultureInfo.CurrentCulture, UiText.T(Error), limit),
+        _ => null
+    };
 
     protected override async Task OnInitializedAsync()
     {

@@ -23,6 +23,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
+    //.AddInteractiveWebAssemblyComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddLocalization();
 builder.Services.AddProblemDetails();
@@ -145,6 +146,7 @@ app.UseAuthorization();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
+    //.AddInteractiveWebAssemblyRenderMode()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
 
@@ -402,6 +404,15 @@ app.MapPost("/alerts/{id:int}/toggle", async (
         return Results.NotFound();
     }
 
+    if (!alert.IsActive)
+    {
+        var policyResult = await ValidateActiveAlertPolicyAsync(db, userId, alert.FlexibleDates);
+        if (policyResult.ErrorKey is not null)
+        {
+            return Results.LocalRedirect($"/alerts?error={Uri.EscapeDataString(policyResult.ErrorKey)}&limit={policyResult.Limit}");
+        }
+    }
+
     alert.IsActive = !alert.IsActive;
     await db.SaveChangesAsync();
     return Results.LocalRedirect("/alerts");
@@ -514,6 +525,55 @@ static async Task SaveIntegrationSettingAsync<T>(
     setting.Enabled = enabled;
     setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(options, jsonOptions);
     setting.UpdatedAt = DateTimeOffset.UtcNow;
+}
+
+static async Task<(string? ErrorKey, int Limit)> ValidateActiveAlertPolicyAsync(
+    ApplicationDbContext db,
+    string userId,
+    bool flexibleDates)
+{
+    var setting = await db.IntegrationSettings
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.AlertPolicy);
+    var policy = setting is null
+        ? new AlertPolicyOptions()
+        : System.Text.Json.JsonSerializer.Deserialize<AlertPolicyOptions>(
+            setting.SettingsJson,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+
+    if (policy.MaxAlertsPerUser <= 0 &&
+        policy.MaxFlexibleAlertsPerUser <= 0 &&
+        policy.MaxSpecificAlertsPerUser <= 0)
+    {
+        return (null, 0);
+    }
+
+    var activeAlerts = await db.PriceAlerts
+        .AsNoTracking()
+        .Where(alert => alert.UserId == userId && alert.IsActive)
+        .Select(alert => alert.FlexibleDates)
+        .ToListAsync();
+
+    if (policy.MaxAlertsPerUser > 0 && activeAlerts.Count >= policy.MaxAlertsPerUser)
+    {
+        return ("ActiveAlertLimitReached", policy.MaxAlertsPerUser);
+    }
+
+    if (flexibleDates &&
+        policy.MaxFlexibleAlertsPerUser > 0 &&
+        activeAlerts.Count(alert => alert) >= policy.MaxFlexibleAlertsPerUser)
+    {
+        return ("ActiveFlexibleAlertLimitReached", policy.MaxFlexibleAlertsPerUser);
+    }
+
+    if (!flexibleDates &&
+        policy.MaxSpecificAlertsPerUser > 0 &&
+        activeAlerts.Count(alert => !alert) >= policy.MaxSpecificAlertsPerUser)
+    {
+        return ("ActiveSpecificAlertLimitReached", policy.MaxSpecificAlertsPerUser);
+    }
+
+    return (null, 0);
 }
 
 public sealed record PushSubscriptionInput(string Endpoint, PushSubscriptionKeys Keys);
