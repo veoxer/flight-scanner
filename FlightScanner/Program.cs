@@ -91,7 +91,7 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddSignInManager()
     .AddDefaultTokenProviders();
 
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+builder.Services.AddScoped<IEmailSender<ApplicationUser>, IdentitySmtpEmailSender>();
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, ApplicationUserClaimsPrincipalFactory>();
 
 var dataProtectionKeysPath = builder.Configuration["FLIGHTSCANNER_DATA_PROTECTION_KEYS_PATH"];
@@ -349,7 +349,8 @@ app.MapPost("/admin/integrations/save", async (
 
 app.MapPost("/admin/reminders/save", async (
     HttpContext context,
-    IDbContextFactory<ApplicationDbContext> dbFactory) =>
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    IConfiguration configuration) =>
 {
     var form = await context.Request.ReadFormAsync();
     var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
@@ -357,15 +358,6 @@ app.MapPost("/admin/reminders/save", async (
         WriteIndented = true
     };
 
-    var email = new EmailOptions
-    {
-        SmtpHost = ReadFormValue(form, "smtpHost", "smtp.gmail.com"),
-        SmtpPort = int.TryParse(ReadFormValue(form, "smtpPort", "587"), out var smtpPort) ? smtpPort : 587,
-        FromAddress = ReadFormValue(form, "fromAddress"),
-        UserName = ReadFormValue(form, "smtpUserName"),
-        Password = ReadFormValue(form, "smtpPassword"),
-        UseStartTls = HasCheckedValue(form, "smtpUseStartTls")
-    };
     var whatsApp = new WhatsAppOptions
     {
         EndpointUrl = ReadFormValue(form, "whatsAppEndpointUrl"),
@@ -382,6 +374,7 @@ app.MapPost("/admin/reminders/save", async (
     };
 
     await using var db = await dbFactory.CreateDbContextAsync();
+    var email = await LoadMergedEmailOptionsAsync(db, configuration);
     await SaveIntegrationSettingAsync(db, IntegrationKind.Email, HasCheckedValue(form, "emailEnabled"), email, jsonOptions);
     await SaveIntegrationSettingAsync(db, IntegrationKind.WhatsApp, HasCheckedValue(form, "whatsAppEnabled"), whatsApp, jsonOptions);
     await SaveIntegrationSettingAsync(db, IntegrationKind.WebPush, HasCheckedValue(form, "webPushEnabled"), webPush, jsonOptions);
@@ -494,6 +487,14 @@ static string NormalizeApiKeys(string value)
         "\n",
         value.Split(['\r', '\n', ',', ';', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.Ordinal));
+}
+
+static async Task<EmailOptions> LoadMergedEmailOptionsAsync(ApplicationDbContext db, IConfiguration configuration)
+{
+    var setting = await db.IntegrationSettings
+        .AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Email);
+    return EmailOptionsResolver.MergeWithConfigurationFallback(setting?.SettingsJson, configuration);
 }
 
 static async Task SaveIntegrationSettingAsync<T>(

@@ -1,18 +1,52 @@
 @page "/admin/users"
+@page "/admin/management"
 @attribute [Authorize(Roles = "Admin")]
 @using System.Text.Json
 @using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
 @inject UserManager<ApplicationUser> UserManager
+@inject IConfiguration Configuration
 
-<PageTitle>@UiText.T("Users")</PageTitle>
+<PageTitle>@UiText.T("Management")</PageTitle>
 
-<h1>@UiText.T("Users")</h1>
+<h1>@UiText.T("Management")</h1>
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
     <div class="alert alert-info">@message</div>
 }
+
+<EditForm Model="email" FormName="admin-smtp-settings" class="tool-surface mb-4">
+    <h2>@UiText.T("SmtpSettings")</h2>
+    <p class="settings-note">@UiText.T("SmtpSettingsText")</p>
+    <div class="search-grid">
+        <div>
+            <label class="form-label">@UiText.T("SmtpHost")</label>
+            <InputText class="form-control" @bind-Value="email.SmtpHost" />
+        </div>
+        <div>
+            <label class="form-label">@UiText.T("SmtpPort")</label>
+            <InputNumber class="form-control" @bind-Value="email.SmtpPort" min="1" max="65535" />
+        </div>
+        <div>
+            <label class="form-label">@UiText.T("FromAddress")</label>
+            <InputText class="form-control" type="email" @bind-Value="email.FromAddress" />
+        </div>
+        <div>
+            <label class="form-label">@UiText.T("Username")</label>
+            <InputText class="form-control" @bind-Value="email.UserName" />
+        </div>
+        <div>
+            <label class="form-label">@UiText.T("PasswordOrAppPassword")</label>
+            <InputText class="form-control" type="password" @bind-Value="email.Password" />
+        </div>
+        <div class="form-check align-self-end">
+            <InputCheckbox class="form-check-input" @bind-Value="email.UseStartTls" />
+            <label class="form-check-label">@UiText.T("UseTls")</label>
+        </div>
+    </div>
+    <button type="button" class="btn btn-primary mt-3" @onclick="SaveEmailSettingsAsync">@UiText.T("SaveSmtpSettings")</button>
+</EditForm>
 
 <EditForm Model="newUser" FormName="admin-create-user" class="tool-surface mb-4">
     <h2>@UiText.T("AddUser")</h2>
@@ -89,6 +123,7 @@
 @code {
     private readonly JsonSerializerOptions jsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly NewUserInput newUser = new();
+    private EmailOptions email = new();
     private AlertPolicyOptions alertPolicy = new();
     private List<UserRow> rows = [];
     private string? message;
@@ -109,6 +144,7 @@
             }
 
             await LoadAlertPolicyAsync();
+            await LoadEmailSettingsAsync();
         }
         catch (Exception ex)
         {
@@ -175,6 +211,37 @@
         }
 
         await LoadAsync();
+    }
+
+    private async Task LoadEmailSettingsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var setting = await db.IntegrationSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Email);
+        email = EmailOptionsResolver.MergeWithConfigurationFallback(setting?.SettingsJson, Configuration);
+    }
+
+    private async Task SaveEmailSettingsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Email);
+        if (setting is null)
+        {
+            setting = new IntegrationSetting { Kind = IntegrationKind.Email, Enabled = false };
+            db.IntegrationSettings.Add(setting);
+        }
+
+        email.SmtpHost = email.SmtpHost.Trim();
+        email.FromAddress = email.FromAddress.Trim();
+        email.UserName = email.UserName.Trim();
+        email.Password = email.Password.Trim();
+        email.SmtpPort = Math.Clamp(email.SmtpPort, 1, 65535);
+
+        setting.SettingsJson = JsonSerializer.Serialize(email, jsonOptions);
+        setting.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        message = UiText.T("SmtpSettingsSaved");
     }
 
     private async Task LoadAlertPolicyAsync()

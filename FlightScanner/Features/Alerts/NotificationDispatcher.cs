@@ -19,6 +19,7 @@ public interface INotificationDispatcher
 public sealed class NotificationDispatcher(
     IDbContextFactory<ApplicationDbContext> dbFactory,
     IHttpClientFactory httpClientFactory,
+    IConfiguration configuration,
     ILogger<NotificationDispatcher> logger) : INotificationDispatcher
 {
     public async Task DispatchPriceMatchAsync(PriceAlert alert, FlightOffer offer, CancellationToken cancellationToken = default)
@@ -123,9 +124,12 @@ public sealed class NotificationDispatcher(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var settings = await db.IntegrationSettings.AsNoTracking().ToListAsync(cancellationToken);
+        var emailSetting = settings.FirstOrDefault(item => item.Kind == IntegrationKind.Email);
 
         return new ReminderDeliverySettings(
-            Read<EmailOptions>(settings, IntegrationKind.Email),
+            new EnabledOptions<EmailOptions>(
+                emailSetting?.Enabled ?? false,
+                EmailOptionsResolver.MergeWithConfigurationFallback(emailSetting?.SettingsJson, configuration)),
             Read<WhatsAppOptions>(settings, IntegrationKind.WhatsApp),
             Read<WebPushOptions>(settings, IntegrationKind.WebPush));
     }

@@ -44,24 +44,6 @@
 
     <div class="settings-grid">
         <section class="tool-surface">
-            <h2>Email SMTP</h2>
-            <label class="form-label">@UiText.T("SmtpHost")</label>
-            <input class="form-control" name="smtpHost" value="@email.SmtpHost" />
-            <label class="form-label mt-3">@UiText.T("SmtpPort")</label>
-            <input class="form-control" name="smtpPort" type="number" min="1" max="65535" value="@email.SmtpPort" />
-            <label class="form-label mt-3">@UiText.T("FromAddress")</label>
-            <input class="form-control" name="fromAddress" value="@email.FromAddress" />
-            <label class="form-label mt-3">@UiText.T("Username")</label>
-            <input class="form-control" name="smtpUserName" value="@email.UserName" />
-            <label class="form-label mt-3">@UiText.T("PasswordOrAppPassword")</label>
-            <input class="form-control" name="smtpPassword" type="password" value="@email.Password" />
-            <div class="form-check mt-3">
-                <input class="form-check-input" type="checkbox" name="smtpUseStartTls" value="true" checked="@email.UseStartTls" />
-                <label class="form-check-label">@UiText.T("UseTls")</label>
-            </div>
-        </section>
-
-        <section class="tool-surface">
             <h2>WhatsApp API</h2>
             <label class="form-label">@UiText.T("EndpointUrl")</label>
             <input class="form-control" name="whatsAppEndpointUrl" value="@whatsApp.EndpointUrl" />
@@ -90,7 +72,6 @@
 
 @code {
     private readonly System.Text.Json.JsonSerializerOptions jsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true };
-    private EmailOptions email = new();
     private WhatsAppOptions whatsApp = new();
     private WebPushOptions webPush = new();
     private bool emailEnabled;
@@ -104,7 +85,7 @@
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         var settings = await db.IntegrationSettings.AsNoTracking().ToListAsync();
-        (email, emailEnabled) = Read<EmailOptions>(settings, IntegrationKind.Email);
+        (_, emailEnabled) = Read<EmailOptions>(settings, IntegrationKind.Email);
         (whatsApp, whatsAppEnabled) = Read<WhatsAppOptions>(settings, IntegrationKind.WhatsApp);
         (webPush, webPushEnabled) = Read<WebPushOptions>(settings, IntegrationKind.WebPush);
     }

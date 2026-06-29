@@ -1076,10 +1076,6 @@ body.modal-open {
 
 @media (max-width: 980px) {
 
-    .search-main-btn{
-        margin-bottom: 10px;
-    }
-
     .metrics-grid, .search-grid, .settings-grid, .channel-grid, .result-card, .alert-row, .airline-grid, .airline-card {
         grid-template-columns: 1fr;
     }
@@ -2024,6 +2020,11 @@ body.modal-open {
 }
 
 @media (max-width: 720px) {
+
+    .search-main-btn {
+        margin-bottom: 10px;
+    }
+
     .flight-search-bar {
         grid-template-columns: 1fr;
     }

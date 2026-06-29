@@ -930,15 +930,7 @@ public sealed class StartupInitializer(
                 UrlJsonPath = configuration["FLIGHT_PROVIDER_URL_JSON_PATH"] ?? "$.offers[0].url",
                 AlertScanIntervalMinutes = AlertScanOptions.DefaultIntervalMinutes
             }),
-            IntegrationKind.Email => Serialize(new EmailOptions
-            {
-                SmtpHost = configuration["SMTP_HOST"] ?? "smtp.gmail.com",
-                SmtpPort = int.TryParse(configuration["SMTP_PORT"], out var smtpPort) ? smtpPort : 587,
-                UseStartTls = !bool.TryParse(configuration["SMTP_USE_STARTTLS"], out var useStartTls) || useStartTls,
-                FromAddress = configuration["SMTP_FROM"] ?? "",
-                UserName = configuration["SMTP_USER"] ?? "",
-                Password = configuration["SMTP_PASSWORD"] ?? ""
-            }),
+            IntegrationKind.Email => Serialize(EmailOptionsResolver.FromConfiguration(configuration)),
             IntegrationKind.WhatsApp => Serialize(new WhatsAppOptions
             {
                 EndpointUrl = configuration["WHATSAPP_API_URL"] ?? "",
