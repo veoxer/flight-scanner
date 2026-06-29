@@ -57,6 +57,33 @@
       }
       return "subscribed";
     },
+    async getPushState() {
+      if (!("Notification" in window)) {
+        return "unsupported";
+      }
+
+      const registration = await ensureServiceWorker();
+      if (!registration || !("PushManager" in window)) {
+        return "unsupported";
+      }
+
+      if (Notification.permission !== "granted") {
+        return Notification.permission;
+      }
+
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        return "not-subscribed";
+      }
+
+      fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription)
+      }).catch(() => {});
+
+      return "subscribed";
+    },
     async show(title, body) {
       const registration = await ensureServiceWorker();
       if (Notification.permission !== "granted" || !registration) {
@@ -79,6 +106,7 @@
     }
 
     button.dataset.boundNotifications = "true";
+    updateNotificationState(button, status);
     button.addEventListener("click", async () => {
       button.disabled = true;
       status.hidden = false;
@@ -89,6 +117,7 @@
         const subscription = await window.flightNotifications.subscribePush();
         if (subscription === "subscribed") {
           status.textContent = button.dataset.statusSubscribed || "Push notifications are enabled for this device.";
+          button.hidden = true;
         } else if (subscription === "missing-public-key") {
           status.textContent = button.dataset.statusMissingKey || "Browser notifications are allowed. Add VAPID keys to enable push.";
         } else if (subscription === "unsupported") {
@@ -102,6 +131,26 @@
         button.disabled = false;
       }
     });
+  }
+
+  async function updateNotificationState(button, status) {
+    try {
+      const state = await window.flightNotifications.getPushState();
+      if (state === "subscribed") {
+        status.hidden = false;
+        status.textContent = button.dataset.statusSubscribed || "Push notifications are enabled for this device.";
+        button.hidden = true;
+        return;
+      }
+
+      button.hidden = false;
+      if (state === "denied") {
+        status.hidden = false;
+        status.textContent = (button.dataset.statusPermission || "Notification permission: {0}.").replace("{0}", state);
+      }
+    } catch {
+      button.hidden = false;
+    }
   }
 
   function scheduleNotificationBinding() {
