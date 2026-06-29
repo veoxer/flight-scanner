@@ -1,6 +1,8 @@
 @page "/admin/users"
 @page "/admin/management"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize(Roles = "Admin")]
+@using System.Net.Mail
 @using System.Text.Json
 @using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
@@ -13,16 +15,17 @@
 
 @if (!string.IsNullOrWhiteSpace(message))
 {
-    <div class="alert alert-info">@message</div>
+    <div class="alert @(messageIsError ? "alert-danger" : "alert-info")">@message</div>
 }
 
-<EditForm Model="email" FormName="admin-smtp-settings" class="tool-surface mb-4">
+<EditForm EditContext="emailEditContext" FormName="admin-smtp-settings" OnSubmit="SaveEmailSettingsAsync" class="tool-surface mb-4" novalidate>
+    <DataAnnotationsValidator />
     <h2>@UiText.T("SmtpSettings")</h2>
     <p class="settings-note">@UiText.T("SmtpSettingsText")</p>
     <div class="search-grid">
         <div>
             <label class="form-label">@UiText.T("SmtpHost")</label>
-            <InputText class="form-control" @bind-Value="email.SmtpHost" />
+            <InputText class="@FieldClass(emailValidationRequested && string.IsNullOrWhiteSpace(email.SmtpHost))" @bind-Value="email.SmtpHost" required />
         </div>
         <div>
             <label class="form-label">@UiText.T("SmtpPort")</label>
@@ -30,7 +33,7 @@
         </div>
         <div>
             <label class="form-label">@UiText.T("FromAddress")</label>
-            <InputText class="form-control" type="email" @bind-Value="email.FromAddress" />
+            <InputText class="@FieldClass(emailValidationRequested && !IsValidEmailAddress(email.FromAddress))" type="email" @bind-Value="email.FromAddress" required />
         </div>
         <div>
             <label class="form-label">@UiText.T("Username")</label>
@@ -45,7 +48,7 @@
             <label class="form-check-label">@UiText.T("UseTls")</label>
         </div>
     </div>
-    <button type="button" class="btn btn-primary mt-3" @onclick="SaveEmailSettingsAsync">@UiText.T("SaveSmtpSettings")</button>
+    <button type="submit" class="btn btn-primary mt-3">@UiText.T("SaveSmtpSettings")</button>
 </EditForm>
 
 <EditForm Model="newUser" FormName="admin-create-user" class="tool-surface mb-4">
@@ -71,24 +74,25 @@
     <button type="button" class="btn btn-primary mt-3" @onclick="CreateUserAsync">@UiText.T("CreateUser")</button>
 </EditForm>
 
-<EditForm Model="alertPolicy" FormName="admin-alert-policy" class="tool-surface mb-4">
+<EditForm EditContext="alertPolicyEditContext" FormName="admin-alert-policy" OnSubmit="SaveAlertPolicyAsync" class="tool-surface mb-4" novalidate>
+    <DataAnnotationsValidator />
     <h2>@UiText.T("AlertLimits")</h2>
     <p class="settings-note">@UiText.T("AlertLimitsText")</p>
     <div class="search-grid">
         <div>
             <label class="form-label">@UiText.T("MaxAlertsPerUser")</label>
-            <InputNumber class="form-control" @bind-Value="alertPolicy.MaxAlertsPerUser" min="0" />
+            <InputNumber class="@FieldClass(alertPolicyValidationRequested && alertPolicy.MaxAlertsPerUser < 0)" @bind-Value="alertPolicy.MaxAlertsPerUser" min="0" />
         </div>
         <div>
             <label class="form-label">@UiText.T("MaxFlexibleAlertsPerUser")</label>
-            <InputNumber class="form-control" @bind-Value="alertPolicy.MaxFlexibleAlertsPerUser" min="0" />
+            <InputNumber class="@FieldClass(alertPolicyValidationRequested && alertPolicy.MaxFlexibleAlertsPerUser < 0)" @bind-Value="alertPolicy.MaxFlexibleAlertsPerUser" min="0" />
         </div>
         <div>
             <label class="form-label">@UiText.T("MaxSpecificAlertsPerUser")</label>
-            <InputNumber class="form-control" @bind-Value="alertPolicy.MaxSpecificAlertsPerUser" min="0" />
+            <InputNumber class="@FieldClass(alertPolicyValidationRequested && alertPolicy.MaxSpecificAlertsPerUser < 0)" @bind-Value="alertPolicy.MaxSpecificAlertsPerUser" min="0" />
         </div>
     </div>
-    <button type="button" class="btn btn-primary mt-3" @onclick="SaveAlertPolicyAsync">@UiText.T("SaveAlertLimits")</button>
+    <button type="submit" class="btn btn-primary mt-3">@UiText.T("SaveAlertLimits")</button>
 </EditForm>
 
 <div class="table-responsive">
@@ -125,11 +129,18 @@
     private readonly NewUserInput newUser = new();
     private EmailOptions email = new();
     private AlertPolicyOptions alertPolicy = new();
+    private EditContext emailEditContext = default!;
+    private EditContext alertPolicyEditContext = default!;
     private List<UserRow> rows = [];
     private string? message;
+    private bool messageIsError;
+    private bool emailValidationRequested;
+    private bool alertPolicyValidationRequested;
 
     protected override async Task OnInitializedAsync()
     {
+        emailEditContext = new EditContext(email);
+        alertPolicyEditContext = new EditContext(alertPolicy);
         await LoadAsync();
     }
 
@@ -148,13 +159,37 @@
         }
         catch (Exception ex)
         {
-            message = ex.Message;
+            SetMessage(ex.Message, isError: true);
         }
     }
 
     private async Task CreateUserAsync()
     {
-        message = null;
+        SetMessage(null);
+        if (string.IsNullOrWhiteSpace(newUser.DisplayName))
+        {
+            SetMessage(string.Format(UiText.T("FieldRequired"), UiText.T("DisplayName")), isError: true);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newUser.Email))
+        {
+            SetMessage(string.Format(UiText.T("FieldRequired"), UiText.T("Email")), isError: true);
+            return;
+        }
+
+        if (!IsValidEmailAddress(newUser.Email))
+        {
+            SetMessage(string.Format(UiText.T("EmailAddressInvalid"), UiText.T("Email")), isError: true);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newUser.Password))
+        {
+            SetMessage(string.Format(UiText.T("FieldRequired"), UiText.T("TemporaryPassword")), isError: true);
+            return;
+        }
+
         var user = new ApplicationUser
         {
             UserName = newUser.Email,
@@ -166,7 +201,7 @@
         var result = await UserManager.CreateAsync(user, newUser.Password);
         if (!result.Succeeded)
         {
-            message = string.Join(" ", result.Errors.Select(error => error.Description));
+            SetMessage(string.Join(" ", result.Errors.Select(error => error.Description)), isError: true);
             return;
         }
 
@@ -180,7 +215,7 @@
         newUser.Email = "";
         newUser.Password = "";
         newUser.Admin = false;
-        message = UiText.T("UserCreated");
+        SetMessage(UiText.T("UserCreated"));
         await LoadAsync();
     }
 
@@ -220,28 +255,58 @@
             .AsNoTracking()
             .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Email);
         email = EmailOptionsResolver.MergeWithConfigurationFallback(setting?.SettingsJson, Configuration);
+        emailEditContext = new EditContext(email);
     }
 
-    private async Task SaveEmailSettingsAsync()
+    private async Task SaveEmailSettingsAsync(EditContext editContext)
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Email);
-        if (setting is null)
+        emailValidationRequested = true;
+        SetMessage(null);
+        editContext.Validate();
+        if (editContext.GetValidationMessages().Any())
         {
-            setting = new IntegrationSetting { Kind = IntegrationKind.Email, Enabled = false };
-            db.IntegrationSettings.Add(setting);
+            SetMessage(UiText.T("FixHighlightedFields"), isError: true);
+            return;
         }
 
-        email.SmtpHost = email.SmtpHost.Trim();
-        email.FromAddress = email.FromAddress.Trim();
-        email.UserName = email.UserName.Trim();
-        email.Password = email.Password.Trim();
-        email.SmtpPort = Math.Clamp(email.SmtpPort, 1, 65535);
+        if (string.IsNullOrWhiteSpace(email.SmtpHost))
+        {
+            SetMessage(string.Format(UiText.T("FieldRequired"), UiText.T("SmtpHost")), isError: true);
+            return;
+        }
 
-        setting.SettingsJson = JsonSerializer.Serialize(email, jsonOptions);
-        setting.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
-        message = UiText.T("SmtpSettingsSaved");
+        if (!IsValidEmailAddress(email.FromAddress))
+        {
+            SetMessage(string.Format(UiText.T("EmailAddressInvalid"), UiText.T("FromAddress")), isError: true);
+            return;
+        }
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Email);
+            if (setting is null)
+            {
+                setting = new IntegrationSetting { Kind = IntegrationKind.Email, Enabled = false };
+                db.IntegrationSettings.Add(setting);
+            }
+
+            email.SmtpHost = email.SmtpHost.Trim();
+            email.FromAddress = email.FromAddress.Trim();
+            email.UserName = email.UserName.Trim();
+            email.Password = email.Password.Trim();
+            email.SmtpPort = Math.Clamp(email.SmtpPort, 1, 65535);
+
+            setting.SettingsJson = JsonSerializer.Serialize(email, jsonOptions);
+            setting.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+            emailValidationRequested = false;
+            SetMessage(UiText.T("SmtpSettingsSaved"));
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, isError: true);
+        }
     }
 
     private async Task LoadAlertPolicyAsync()
@@ -253,27 +318,77 @@
         alertPolicy = setting is null
             ? new AlertPolicyOptions()
             : JsonSerializer.Deserialize<AlertPolicyOptions>(setting.SettingsJson, jsonOptions) ?? new AlertPolicyOptions();
+        alertPolicyEditContext = new EditContext(alertPolicy);
     }
 
-    private async Task SaveAlertPolicyAsync()
+    private async Task SaveAlertPolicyAsync(EditContext editContext)
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.AlertPolicy);
-        if (setting is null)
+        alertPolicyValidationRequested = true;
+        SetMessage(null);
+        editContext.Validate();
+        if (editContext.GetValidationMessages().Any() ||
+            alertPolicy.MaxAlertsPerUser < 0 ||
+            alertPolicy.MaxFlexibleAlertsPerUser < 0 ||
+            alertPolicy.MaxSpecificAlertsPerUser < 0)
         {
-            setting = new IntegrationSetting { Kind = IntegrationKind.AlertPolicy, Enabled = true };
-            db.IntegrationSettings.Add(setting);
+            SetMessage(UiText.T("FixHighlightedFields"), isError: true);
+            return;
         }
 
-        alertPolicy.MaxAlertsPerUser = Math.Max(0, alertPolicy.MaxAlertsPerUser);
-        alertPolicy.MaxFlexibleAlertsPerUser = Math.Max(0, alertPolicy.MaxFlexibleAlertsPerUser);
-        alertPolicy.MaxSpecificAlertsPerUser = Math.Max(0, alertPolicy.MaxSpecificAlertsPerUser);
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var setting = await db.IntegrationSettings.FirstOrDefaultAsync(item => item.Kind == IntegrationKind.AlertPolicy);
+            if (setting is null)
+            {
+                setting = new IntegrationSetting { Kind = IntegrationKind.AlertPolicy, Enabled = true };
+                db.IntegrationSettings.Add(setting);
+            }
 
-        setting.Enabled = true;
-        setting.SettingsJson = JsonSerializer.Serialize(alertPolicy, jsonOptions);
-        setting.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
-        message = UiText.T("AlertLimitsSaved");
+            alertPolicy.MaxAlertsPerUser = Math.Max(0, alertPolicy.MaxAlertsPerUser);
+            alertPolicy.MaxFlexibleAlertsPerUser = Math.Max(0, alertPolicy.MaxFlexibleAlertsPerUser);
+            alertPolicy.MaxSpecificAlertsPerUser = Math.Max(0, alertPolicy.MaxSpecificAlertsPerUser);
+
+            setting.Enabled = true;
+            setting.SettingsJson = JsonSerializer.Serialize(alertPolicy, jsonOptions);
+            setting.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+            alertPolicyValidationRequested = false;
+            SetMessage(UiText.T("AlertLimitsSaved"));
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, isError: true);
+        }
+    }
+
+    private void SetMessage(string? value, bool isError = false)
+    {
+        message = value;
+        messageIsError = isError;
+    }
+
+    private static string FieldClass(bool invalid)
+    {
+        return invalid ? "form-control is-invalid" : "form-control";
+    }
+
+    private static bool IsValidEmailAddress(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            var address = new MailAddress(value);
+            return address.Address.Equals(value.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private sealed class NewUserInput

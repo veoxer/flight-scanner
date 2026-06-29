@@ -1100,6 +1100,10 @@ body.modal-open {
 }
 
 @media (max-width: 640px) {
+    .search-main-btn {
+        margin-bottom: 10px;
+    }
+
     .content {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
@@ -2020,10 +2024,6 @@ body.modal-open {
 }
 
 @media (max-width: 720px) {
-
-    .search-main-btn {
-        margin-bottom: 10px;
-    }
 
     .flight-search-bar {
         grid-template-columns: 1fr;
