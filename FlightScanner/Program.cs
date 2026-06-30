@@ -14,6 +14,7 @@ using FlightScanner.Features.Localization;
 using FlightScanner.Features.Setup;
 using FlightScanner.Data;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 using System.Globalization;
 using System.Security.Claims;
@@ -196,6 +197,7 @@ app.MapGet("/culture/set", async (
 app.MapGet("/api/locations/suggest", async (
     string q,
     IDbContextFactory<ApplicationDbContext> dbFactory,
+    IMemoryCache cache,
     CancellationToken cancellationToken) =>
 {
     q = q.Trim();
@@ -204,35 +206,28 @@ app.MapGet("/api/locations/suggest", async (
         return Results.Ok(Array.Empty<object>());
     }
 
-    await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
     var lowered = q.ToLowerInvariant();
     var culture = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-    var regionalLocations = await db.FlightLocations.AsNoTracking()
-        .Where(location =>
-            (location.Type == LocationType.Country || location.Type == LocationType.Continent) &&
-            (location.Code.ToLower().Contains(lowered) ||
-                location.Name.ToLower().Contains(lowered) ||
-                (location.NameFr != null && location.NameFr.ToLower().Contains(lowered)) ||
-                (location.NameAr != null && location.NameAr.ToLower().Contains(lowered)) ||
-                location.Continent.ToLower().Contains(lowered)))
-        .Take(80)
-        .ToListAsync(cancellationToken);
-    var otherLocations = await db.FlightLocations.AsNoTracking()
-        .Where(location =>
-            location.Type != LocationType.Country &&
-            location.Type != LocationType.Continent &&
-            (location.Code.ToLower().Contains(lowered) ||
-                location.Name.ToLower().Contains(lowered) ||
-                (location.NameFr != null && location.NameFr.ToLower().Contains(lowered)) ||
-                (location.NameAr != null && location.NameAr.ToLower().Contains(lowered)) ||
-                (location.CountryName != null && location.CountryName.ToLower().Contains(lowered)) ||
-                (location.CountryNameFr != null && location.CountryNameFr.ToLower().Contains(lowered)) ||
-                (location.CountryNameAr != null && location.CountryNameAr.ToLower().Contains(lowered)) ||
-                location.Continent.ToLower().Contains(lowered)))
-        .Take(220)
-        .ToListAsync(cancellationToken);
-    var locations = regionalLocations
-        .Concat(otherLocations)
+    var cacheKey = $"locations:suggest:{culture}:{lowered}";
+    if (cache.TryGetValue<object[]>(cacheKey, out var cachedSuggestions))
+    {
+        return Results.Ok(cachedSuggestions);
+    }
+
+    await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+    var prefixPattern = $"{EscapeLikePattern(lowered)}%";
+    var locations = await QueryLocalizedLocationSuggestionsAsync(db, lowered, prefixPattern, culture, cancellationToken);
+    if (culture != "en" && locations.Count < 120)
+    {
+        var englishLocations = await QueryLocalizedLocationSuggestionsAsync(db, lowered, prefixPattern, "en", cancellationToken);
+        locations = locations
+            .Concat(englishLocations)
+            .GroupBy(location => new { location.Type, location.Code })
+            .Select(group => group.First())
+            .ToList();
+    }
+
+    locations = locations
         .GroupBy(location => new { location.Type, location.Code })
         .Select(group => group.First())
         .ToList();
@@ -253,7 +248,10 @@ app.MapGet("/api/locations/suggest", async (
             location.Type == LocationType.Airport ? 2 : 3)
         .ThenBy(location => LocalizedLocationName(location, culture))
         .Take(12)
-        .Select(location => BuildLocationSuggestion(location, culture));
+        .Select(location => BuildLocationSuggestion(location, culture))
+        .ToArray();
+
+    cache.Set(cacheKey, suggestions, TimeSpan.FromMinutes(30));
 
     return Results.Ok(suggestions);
 }).RequireAuthorization();
@@ -272,13 +270,27 @@ app.MapGet("/api/locations/resolve", async (
     await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
     var lowered = q.ToLowerInvariant();
     var culture = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-    var matches = await db.FlightLocations.AsNoTracking()
-        .Where(location =>
-            location.Code.ToLower() == lowered ||
-            location.Name.ToLower() == lowered ||
-            (location.NameFr != null && location.NameFr.ToLower() == lowered) ||
-            (location.NameAr != null && location.NameAr.ToLower() == lowered))
-        .Take(40)
+    var matches = await db.FlightLocations
+        .FromSqlInterpolated($"""
+            SELECT *
+            FROM "FlightLocations"
+            WHERE lower("Code") = {lowered}
+                OR lower("Name") = {lowered}
+                OR lower(coalesce("NameFr", '')) = {lowered}
+                OR lower(coalesce("NameAr", '')) = {lowered}
+            ORDER BY
+                CASE
+                    WHEN lower("Code") = {lowered} THEN 0
+                    WHEN lower("Name") = {lowered}
+                        OR lower(coalesce("NameFr", '')) = {lowered}
+                        OR lower(coalesce("NameAr", '')) = {lowered} THEN 1
+                    ELSE 2
+                END,
+                CASE "Type" WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 WHEN 3 THEN 3 ELSE 4 END,
+                "Name"
+            LIMIT 40
+            """)
+        .AsNoTracking()
         .ToListAsync(cancellationToken);
 
     var match = matches
@@ -666,6 +678,104 @@ static object BuildLocationSuggestion(FlightLocation location, string culture)
             _ => $"{LocalizedCountryName(location, culture)} · {LocalizedContinent(location, culture)}"
         }
     };
+}
+
+static Task<List<FlightLocation>> QueryLocalizedLocationSuggestionsAsync(
+    ApplicationDbContext db,
+    string lowered,
+    string prefixPattern,
+    string culture,
+    CancellationToken cancellationToken)
+{
+    return culture switch
+    {
+        "fr" => db.FlightLocations
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "FlightLocations"
+                WHERE lower("Code") LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("CountryCode", '')) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("NameFr", "Name")) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("CountryNameFr", "CountryName", '')) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("ContinentFr", "Continent")) LIKE {prefixPattern} ESCAPE '\'
+                ORDER BY
+                    CASE
+                        WHEN lower("Code") = {lowered} THEN 0
+                        WHEN lower(coalesce("NameFr", "Name")) = {lowered} THEN 1
+                        WHEN lower("Code") LIKE {prefixPattern} ESCAPE '\' THEN 2
+                        WHEN lower(coalesce("NameFr", "Name")) LIKE {prefixPattern} ESCAPE '\' THEN 3
+                        WHEN lower(coalesce("CountryNameFr", "CountryName", '')) LIKE {prefixPattern} ESCAPE '\' THEN 4
+                        WHEN lower(coalesce("ContinentFr", "Continent")) LIKE {prefixPattern} ESCAPE '\' THEN 5
+                        ELSE 6
+                    END,
+                    CASE "Type" WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 WHEN 3 THEN 3 ELSE 4 END,
+                    coalesce("NameFr", "Name"),
+                    "Code"
+                LIMIT 300
+                """)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken),
+        "ar" => db.FlightLocations
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "FlightLocations"
+                WHERE lower("Code") LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("CountryCode", '')) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("NameAr", "Name")) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("CountryNameAr", "CountryName", '')) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("ContinentAr", "Continent")) LIKE {prefixPattern} ESCAPE '\'
+                ORDER BY
+                    CASE
+                        WHEN lower("Code") = {lowered} THEN 0
+                        WHEN lower(coalesce("NameAr", "Name")) = {lowered} THEN 1
+                        WHEN lower("Code") LIKE {prefixPattern} ESCAPE '\' THEN 2
+                        WHEN lower(coalesce("NameAr", "Name")) LIKE {prefixPattern} ESCAPE '\' THEN 3
+                        WHEN lower(coalesce("CountryNameAr", "CountryName", '')) LIKE {prefixPattern} ESCAPE '\' THEN 4
+                        WHEN lower(coalesce("ContinentAr", "Continent")) LIKE {prefixPattern} ESCAPE '\' THEN 5
+                        ELSE 6
+                    END,
+                    CASE "Type" WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 WHEN 3 THEN 3 ELSE 4 END,
+                    coalesce("NameAr", "Name"),
+                    "Code"
+                LIMIT 300
+                """)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken),
+        _ => db.FlightLocations
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "FlightLocations"
+                WHERE lower("Code") LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("CountryCode", '')) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower("Name") LIKE {prefixPattern} ESCAPE '\'
+                    OR lower(coalesce("CountryName", '')) LIKE {prefixPattern} ESCAPE '\'
+                    OR lower("Continent") LIKE {prefixPattern} ESCAPE '\'
+                ORDER BY
+                    CASE
+                        WHEN lower("Code") = {lowered} THEN 0
+                        WHEN lower("Name") = {lowered} THEN 1
+                        WHEN lower("Code") LIKE {prefixPattern} ESCAPE '\' THEN 2
+                        WHEN lower("Name") LIKE {prefixPattern} ESCAPE '\' THEN 3
+                        WHEN lower(coalesce("CountryName", '')) LIKE {prefixPattern} ESCAPE '\' THEN 4
+                        WHEN lower("Continent") LIKE {prefixPattern} ESCAPE '\' THEN 5
+                        ELSE 6
+                    END,
+                    CASE "Type" WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 WHEN 3 THEN 3 ELSE 4 END,
+                    "Name",
+                    "Code"
+                LIMIT 300
+                """)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+    };
+}
+
+static string EscapeLikePattern(string value)
+{
+    return value
+        .Replace("\\", "\\\\")
+        .Replace("%", "\\%")
+        .Replace("_", "\\_");
 }
 
 public sealed record PushSubscriptionInput(string Endpoint, PushSubscriptionKeys Keys);

@@ -27,6 +27,7 @@ public sealed class StartupInitializer(
 
         await db.Database.EnsureCreatedAsync(cancellationToken);
         await EnsureSchemaAsync(db, cancellationToken);
+        await EnsureLocationSearchIndexesAsync(db, cancellationToken);
 
         foreach (var role in new[] { "Admin", "User" })
         {
@@ -261,6 +262,55 @@ public sealed class StartupInitializer(
                 AND "TargetPrice" > 0;
             """,
             cancellationToken);
+    }
+
+    private async Task EnsureLocationSearchIndexesAsync(ApplicationDbContext db, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                DROP INDEX IF EXISTS "IX_FlightLocations_SearchText_Trgm";
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_Code_Lower_Pattern"
+                ON "FlightLocations" (lower("Code") text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_CountryCode_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("CountryCode", '')) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_Name_Lower_Pattern"
+                ON "FlightLocations" (lower("Name") text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_NameFr_Fallback_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("NameFr", "Name")) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_NameAr_Fallback_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("NameAr", "Name")) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_CountryName_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("CountryName", '')) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_CountryNameFr_Fallback_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("CountryNameFr", "CountryName", '')) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_CountryNameAr_Fallback_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("CountryNameAr", "CountryName", '')) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_Continent_Lower_Pattern"
+                ON "FlightLocations" (lower("Continent") text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_ContinentFr_Fallback_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("ContinentFr", "Continent")) text_pattern_ops);
+
+                CREATE INDEX IF NOT EXISTS "IX_FlightLocations_ContinentAr_Fallback_Lower_Pattern"
+                ON "FlightLocations" (lower(coalesce("ContinentAr", "Continent")) text_pattern_ops);
+                """,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Location search indexes could not be created. Autocomplete will still work, but it may be slower.");
+        }
     }
 
     private async Task<IReadOnlyList<FlightLocation>> TryImportWorldLocationsAsync(

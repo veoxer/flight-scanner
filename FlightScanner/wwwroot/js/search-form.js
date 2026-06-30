@@ -1004,6 +1004,7 @@
             var codeInput = root.querySelector("[data-location-code='" + name + "']");
             var controller = null;
             var resolveController = null;
+            var suggestionTimer = null;
 
             function close() {
                 window.setTimeout(function () {
@@ -1080,6 +1081,10 @@
                 input.setCustomValidity("");
                 input.classList.remove("is-invalid");
                 syncClearButtonForInput(input, root.querySelector("[data-location-clear='" + name + "']"));
+                if (suggestionTimer) {
+                    window.clearTimeout(suggestionTimer);
+                    suggestionTimer = null;
+                }
                 if (resolveController) {
                     resolveController.abort();
                 }
@@ -1093,34 +1098,36 @@
                     controller.abort();
                 }
 
-                controller = new AbortController();
-                fetch("/api/locations/suggest?q=" + encodeURIComponent(query), {
-                    headers: { "Accept": "application/json" },
-                    signal: controller.signal
-                })
-                    .then(function (response) {
-                        if (!response.ok) {
-                            throw new Error("Suggestion request failed");
-                        }
-                        return response.json();
+                suggestionTimer = window.setTimeout(function () {
+                    controller = new AbortController();
+                    fetch("/api/locations/suggest?q=" + encodeURIComponent(query), {
+                        headers: { "Accept": "application/json" },
+                        signal: controller.signal
                     })
-                    .then(function (items) {
-                        menu.replaceChildren();
-                        if (!items.length) {
-                            menu.hidden = true;
-                            return;
-                        }
+                        .then(function (response) {
+                            if (!response.ok) {
+                                throw new Error("Suggestion request failed");
+                            }
+                            return response.json();
+                        })
+                        .then(function (items) {
+                            menu.replaceChildren();
+                            if (!items.length) {
+                                menu.hidden = true;
+                                return;
+                            }
 
-                        items.forEach(function (item) {
-                            menu.appendChild(createOption(item, input, typeInput, codeInput, menu));
+                            items.forEach(function (item) {
+                                menu.appendChild(createOption(item, input, typeInput, codeInput, menu));
+                            });
+                            menu.hidden = false;
+                        })
+                        .catch(function (error) {
+                            if (error.name !== "AbortError") {
+                                menu.hidden = true;
+                            }
                         });
-                        menu.hidden = false;
-                    })
-                    .catch(function (error) {
-                        if (error.name !== "AbortError") {
-                            menu.hidden = true;
-                        }
-                    });
+                }, 180);
             });
         });
 
@@ -1135,7 +1142,8 @@
                 var input = root.querySelector("[data-location-input='" + name + "']");
                 var menu = root.querySelector("[data-location-menu='" + name + "']");
                 var codeInput = root.querySelector("[data-location-code='" + name + "']");
-                if (!input || !codeInput) {
+                var typeInput = root.querySelector("[data-location-type='" + name + "']");
+                if (!input || !codeInput || !typeInput) {
                     return;
                 }
 
@@ -1144,15 +1152,16 @@
                 input.setCustomValidity("");
                 input.classList.remove("is-invalid");
                 codeInput.value = "";
-                syncClearButtonForInput(input, button);
+                typeInput.value = "";
+                button.hidden = true;
                 if (menu) {
-                    menu.replaceChildren();
                     menu.hidden = true;
+                    menu.replaceChildren();
                 }
-                input.dispatchEvent(new Event("input", { bubbles: true }));
                 input.focus();
             });
         });
+
         root.querySelectorAll("[data-location-input]").forEach(function (input) {
             var name = input.getAttribute("data-location-input");
             syncClearButtonForInput(input, root.querySelector("[data-location-clear='" + name + "']"));
