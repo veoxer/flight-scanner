@@ -1850,18 +1850,51 @@ body.modal-open {
     display: flex;
     justify-content: space-between;
     margin-bottom: 0.65rem;
+    gap: 0.7rem;
 }
 
-    .date-calendar-header button {
-        background: #edf3f8;
-        border: 0;
-        border-radius: 6px;
-        color: #0f172a;
-        font-size: 1.25rem;
-        font-weight: 900;
-        height: 2rem;
-        line-height: 1;
-        width: 2rem;
+.date-calendar-nav {
+    align-items: center;
+    display: grid;
+    flex: 1;
+    gap: 0.45rem;
+    grid-template-columns: 2rem minmax(7rem, 1fr) 2rem;
+}
+
+.date-calendar-title {
+    text-align: center;
+}
+
+.date-calendar-nav-button,
+.date-calendar-close {
+    align-items: center;
+    background: #edf3f8;
+    border: 0;
+    border-radius: 6px;
+    color: #0f172a;
+    display: inline-flex;
+    font-size: 1.25rem;
+    font-weight: 900;
+    height: 2rem;
+    justify-content: center;
+    line-height: 1;
+    width: 2rem;
+}
+
+    .date-calendar-nav-button:hover,
+    .date-calendar-close:hover {
+        background: #dceaf4;
+    }
+
+.date-calendar-close {
+    background: #f3f6fa;
+    color: #526071;
+    font-size: 1.05rem;
+}
+
+    .date-calendar-close:hover {
+        background: #fee2e2;
+        color: #b91c1c;
     }
 
 .date-calendar-grid {

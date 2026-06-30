@@ -109,15 +109,26 @@
 
         var header = document.createElement("div");
         header.className = "date-calendar-header";
+        var nav = document.createElement("div");
+        nav.className = "date-calendar-nav";
         var previous = document.createElement("button");
         previous.type = "button";
+        previous.className = "date-calendar-nav-button";
         previous.textContent = "‹";
         var title = document.createElement("strong");
+        title.className = "date-calendar-title";
         title.textContent = monthNames[month.getMonth()] + " " + month.getFullYear();
         var next = document.createElement("button");
         next.type = "button";
+        next.className = "date-calendar-nav-button";
         next.textContent = "›";
-        header.append(previous, title, next);
+        var close = document.createElement("button");
+        close.type = "button";
+        close.className = "date-calendar-close";
+        close.textContent = "×";
+        close.setAttribute("aria-label", "Close date picker");
+        nav.append(previous, title, next);
+        header.append(nav, close);
         calendar.appendChild(header);
 
         var grid = document.createElement("div");
@@ -169,6 +180,11 @@
             event.preventDefault();
             event.stopPropagation();
             renderCalendar(field, depart, ret, new Date(month.getFullYear(), month.getMonth() + 1, 1));
+        });
+        close.addEventListener("click", function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            calendar.remove();
         });
 
         calendar.appendChild(grid);
