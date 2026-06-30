@@ -83,8 +83,13 @@ public sealed class StartupInitializer(
 
     private static async Task EnsureSchemaAsync(ApplicationDbContext db, CancellationToken cancellationToken)
     {
-        await db.Database.ExecuteSqlRawAsync(
-            """
+        var previousTimeout = db.Database.GetCommandTimeout();
+        db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
             ALTER TABLE "PriceAlerts"
             ADD COLUMN IF NOT EXISTS "TargetMode" character varying(8) NOT NULL DEFAULT 'Max';
 
@@ -180,7 +185,12 @@ public sealed class StartupInitializer(
                 "Provider" = CASE WHEN COALESCE(TRIM("Provider"), '') = '' THEN 'SerpApiGoogleFlights' ELSE TRIM("Provider") END,
                 "IdentifierType" = CASE WHEN COALESCE(TRIM("IdentifierType"), '') = '' THEN 'FreebaseId' ELSE TRIM("IdentifierType") END,
                 "Identifier" = TRIM("Identifier"),
-                "Source" = CASE WHEN COALESCE(TRIM("Source"), '') = '' THEN 'Wikidata' ELSE TRIM("Source") END;
+                "Source" = CASE WHEN COALESCE(TRIM("Source"), '') = '' THEN 'Wikidata' ELSE TRIM("Source") END
+            WHERE "LocationCode" <> UPPER(TRIM("LocationCode"))
+                OR "Provider" <> CASE WHEN COALESCE(TRIM("Provider"), '') = '' THEN 'SerpApiGoogleFlights' ELSE TRIM("Provider") END
+                OR "IdentifierType" <> CASE WHEN COALESCE(TRIM("IdentifierType"), '') = '' THEN 'FreebaseId' ELSE TRIM("IdentifierType") END
+                OR "Identifier" <> TRIM("Identifier")
+                OR "Source" <> CASE WHEN COALESCE(TRIM("Source"), '') = '' THEN 'Wikidata' ELSE TRIM("Source") END;
 
             UPDATE "FlightLocations"
             SET "Code" = UPPER(TRIM("Code")),
@@ -193,7 +203,18 @@ public sealed class StartupInitializer(
                 "CountryNameAr" = NULLIF(TRIM(COALESCE("CountryNameAr", '')), ''),
                 "Continent" = TRIM("Continent"),
                 "ContinentFr" = NULLIF(TRIM(COALESCE("ContinentFr", '')), ''),
-                "ContinentAr" = NULLIF(TRIM(COALESCE("ContinentAr", '')), '');
+                "ContinentAr" = NULLIF(TRIM(COALESCE("ContinentAr", '')), '')
+            WHERE "Code" <> UPPER(TRIM("Code"))
+                OR "Name" <> TRIM("Name")
+                OR COALESCE("NameFr", '') <> COALESCE(NULLIF(TRIM(COALESCE("NameFr", '')), ''), '')
+                OR COALESCE("NameAr", '') <> COALESCE(NULLIF(TRIM(COALESCE("NameAr", '')), ''), '')
+                OR COALESCE("CountryCode", '') <> COALESCE(NULLIF(UPPER(TRIM(COALESCE("CountryCode", ''))), ''), '')
+                OR COALESCE("CountryName", '') <> COALESCE(NULLIF(TRIM(COALESCE("CountryName", '')), ''), '')
+                OR COALESCE("CountryNameFr", '') <> COALESCE(NULLIF(TRIM(COALESCE("CountryNameFr", '')), ''), '')
+                OR COALESCE("CountryNameAr", '') <> COALESCE(NULLIF(TRIM(COALESCE("CountryNameAr", '')), ''), '')
+                OR "Continent" <> TRIM("Continent")
+                OR COALESCE("ContinentFr", '') <> COALESCE(NULLIF(TRIM(COALESCE("ContinentFr", '')), ''), '')
+                OR COALESCE("ContinentAr", '') <> COALESCE(NULLIF(TRIM(COALESCE("ContinentAr", '')), ''), '');
 
             DELETE FROM "FlightLocationIdentifiers" duplicate
             USING "FlightLocationIdentifiers" keeper
@@ -261,7 +282,12 @@ public sealed class StartupInitializer(
                 AND "TargetMode" = 'Min'
                 AND "TargetPrice" > 0;
             """,
-            cancellationToken);
+                cancellationToken);
+        }
+        finally
+        {
+            db.Database.SetCommandTimeout(previousTimeout);
+        }
     }
 
     private async Task EnsureLocationSearchIndexesAsync(ApplicationDbContext db, CancellationToken cancellationToken)
