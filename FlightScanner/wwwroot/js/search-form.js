@@ -151,6 +151,7 @@
                 var picked = new Date(Number(event.currentTarget.dataset.year), Number(event.currentTarget.dataset.month), Number(event.currentTarget.dataset.day));
                 field.value = formatDisplayDate(picked);
                 enforceDatePair(depart, ret, field);
+                field.dispatchEvent(new Event("change", { bubbles: true }));
                 calendar.remove();
             });
             button.dataset.year = String(date.getFullYear());
@@ -182,6 +183,12 @@
         renderCalendar(field, depart, ret, selected);
     }
 
+    function syncClearButtonForInput(input, button) {
+        if (button) {
+            button.hidden = !input || !input.value.trim();
+        }
+    }
+
     function bindDatePair(root) {
         var depart = root.querySelector("[data-flight-date='depart']");
         var ret = root.querySelector("[data-flight-date='return']");
@@ -192,9 +199,20 @@
         depart.dataset.boundFlightDates = "true";
         ret.dataset.boundFlightDates = "true";
 
+        function syncDateClearButtons() {
+            root.querySelectorAll("[data-date-clear]").forEach(function (button) {
+                var target = root.querySelector("[data-flight-date='" + button.getAttribute("data-date-clear") + "']");
+                syncClearButtonForInput(target, button);
+            });
+        }
+
         [depart, ret].forEach(function (field) {
             field.addEventListener("input", function () {
                 maskDateField(field);
+                syncDateClearButtons();
+            });
+            field.addEventListener("click", function () {
+                showCalendar(field, depart, ret);
             });
             field.addEventListener("focus", function () {
                 showCalendar(field, depart, ret);
@@ -203,10 +221,12 @@
 
         depart.addEventListener("change", function () {
             enforceDatePair(depart, ret, depart);
+            syncDateClearButtons();
         });
 
         ret.addEventListener("change", function () {
             enforceDatePair(depart, ret, ret);
+            syncDateClearButtons();
         });
 
         root.querySelectorAll("[data-date-toggle]").forEach(function (button) {
@@ -218,6 +238,30 @@
                 }
             });
         });
+
+        root.querySelectorAll("[data-date-clear]").forEach(function (button) {
+            if (button.dataset.boundDateClear === "true") {
+                return;
+            }
+
+            button.dataset.boundDateClear = "true";
+            button.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                var target = root.querySelector("[data-flight-date='" + button.getAttribute("data-date-clear") + "']");
+                if (!target) {
+                    return;
+                }
+
+                target.value = "";
+                target.dispatchEvent(new Event("change", { bubbles: true }));
+                syncClearButtonForInput(target, button);
+                document.querySelectorAll(".date-calendar").forEach(function (calendar) {
+                    calendar.remove();
+                });
+            });
+        });
+        syncDateClearButtons();
 
         document.addEventListener("click", function (event) {
             if (!event.target.closest(".date-picker-field")) {
@@ -301,10 +345,14 @@
             var originCodeValue = originCode.value;
             origin.value = destination.value;
             destination.value = originValue;
+            origin.dataset.locationSelectedValue = origin.value;
+            destination.dataset.locationSelectedValue = destination.value;
             originType.value = destinationType.value;
             destinationType.value = originTypeValue;
             originCode.value = destinationCode.value;
             destinationCode.value = originCodeValue;
+            syncClearButtonForInput(origin, root.querySelector("[data-location-clear='origin']"));
+            syncClearButtonForInput(destination, root.querySelector("[data-location-clear='destination']"));
         });
     }
 
@@ -927,12 +975,15 @@
         button.className = "location-option";
         button.innerHTML =
             '<span class="location-kind"></span><span><strong></strong><small></small></span>';
-        button.querySelector(".location-kind").textContent = item.type;
+        button.querySelector(".location-kind").textContent = item.typeLabel || item.type;
         button.querySelector("strong").textContent = item.primary;
         button.querySelector("small").textContent = item.secondary;
         button.addEventListener("mousedown", function (event) {
             event.preventDefault();
             input.value = item.value;
+            input.dataset.locationSelectedValue = item.value;
+            input.setCustomValidity("");
+            input.classList.remove("is-invalid");
             typeInput.value = item.type;
             codeInput.value = item.code || "";
             menu.hidden = true;
@@ -952,6 +1003,7 @@
             var typeInput = root.querySelector("[data-location-type='" + name + "']");
             var codeInput = root.querySelector("[data-location-code='" + name + "']");
             var controller = null;
+            var resolveController = null;
 
             function close() {
                 window.setTimeout(function () {
@@ -959,10 +1011,78 @@
                 }, 120);
             }
 
-            input.addEventListener("blur", close);
+            function applyLocation(item) {
+                input.value = item.value;
+                input.dataset.locationSelectedValue = item.value;
+                input.setCustomValidity("");
+                input.classList.remove("is-invalid");
+                typeInput.value = item.type;
+                codeInput.value = item.code || "";
+                syncClearButtonForInput(input, root.querySelector("[data-location-clear='" + name + "']"));
+                menu.hidden = true;
+            }
+
+            function invalidateTypedLocation() {
+                if (!input.value.trim()) {
+                    input.setCustomValidity("");
+                    input.classList.remove("is-invalid");
+                    return;
+                }
+
+                input.setCustomValidity(input.getAttribute("data-location-invalid-message") || "Choose a suggested location.");
+                input.classList.add("is-invalid");
+                input.reportValidity();
+            }
+
+            function resolveExactLocation() {
+                var query = input.value.trim();
+                if (!query || (codeInput.value.trim() && input.dataset.locationSelectedValue === query)) {
+                    return;
+                }
+
+                if (resolveController) {
+                    resolveController.abort();
+                }
+
+                resolveController = new AbortController();
+                fetch("/api/locations/resolve?q=" + encodeURIComponent(query), {
+                    headers: { "Accept": "application/json" },
+                    signal: resolveController.signal
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error("Location resolve request failed");
+                        }
+                        return response.json();
+                    })
+                    .then(function (item) {
+                        if (item && item.code) {
+                            applyLocation(item);
+                        } else {
+                            invalidateTypedLocation();
+                        }
+                    })
+                    .catch(function (error) {
+                        if (error.name !== "AbortError") {
+                            invalidateTypedLocation();
+                        }
+                    });
+            }
+
+            input.addEventListener("blur", function () {
+                close();
+                window.setTimeout(resolveExactLocation, 140);
+            });
             input.addEventListener("input", function () {
                 var query = input.value.trim();
                 codeInput.value = "";
+                input.dataset.locationSelectedValue = "";
+                input.setCustomValidity("");
+                input.classList.remove("is-invalid");
+                syncClearButtonForInput(input, root.querySelector("[data-location-clear='" + name + "']"));
+                if (resolveController) {
+                    resolveController.abort();
+                }
                 if (query.length < 2) {
                     menu.hidden = true;
                     menu.replaceChildren();
@@ -1003,6 +1123,72 @@
                     });
             });
         });
+
+        root.querySelectorAll("[data-location-clear]").forEach(function (button) {
+            if (button.dataset.boundLocationClear === "true") {
+                return;
+            }
+
+            button.dataset.boundLocationClear = "true";
+            button.addEventListener("click", function () {
+                var name = button.getAttribute("data-location-clear");
+                var input = root.querySelector("[data-location-input='" + name + "']");
+                var menu = root.querySelector("[data-location-menu='" + name + "']");
+                var codeInput = root.querySelector("[data-location-code='" + name + "']");
+                if (!input || !codeInput) {
+                    return;
+                }
+
+                input.value = "";
+                input.dataset.locationSelectedValue = "";
+                input.setCustomValidity("");
+                input.classList.remove("is-invalid");
+                codeInput.value = "";
+                syncClearButtonForInput(input, button);
+                if (menu) {
+                    menu.replaceChildren();
+                    menu.hidden = true;
+                }
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.focus();
+            });
+        });
+        root.querySelectorAll("[data-location-input]").forEach(function (input) {
+            var name = input.getAttribute("data-location-input");
+            syncClearButtonForInput(input, root.querySelector("[data-location-clear='" + name + "']"));
+        });
+    }
+
+    function validateLocationSelections(root) {
+        var invalid = null;
+        root.querySelectorAll("[data-location-input]").forEach(function (input) {
+            if (invalid) {
+                return;
+            }
+
+            var name = input.getAttribute("data-location-input");
+            var codeInput = root.querySelector("[data-location-code='" + name + "']");
+            var value = input.value.trim();
+            var selectedValue = (input.dataset.locationSelectedValue || "").trim();
+            input.setCustomValidity("");
+            input.classList.remove("is-invalid");
+
+            if (value && codeInput && codeInput.value.trim() && selectedValue && selectedValue === value) {
+                return;
+            }
+
+            invalid = input;
+        });
+
+        if (!invalid) {
+            return true;
+        }
+
+        invalid.setCustomValidity(invalid.getAttribute("data-location-invalid-message") || "Choose a suggested location.");
+        invalid.classList.add("is-invalid");
+        invalid.focus();
+        invalid.reportValidity();
+        return false;
     }
 
     function cabinText(value) {
@@ -1749,6 +1935,9 @@
                 });
             });
             root.dataset.restoredSearchState = "true";
+            root.querySelectorAll("[data-location-input]").forEach(function (input) {
+                input.dataset.locationSelectedValue = input.value;
+            });
             bindTripMode(root);
             syncDateMode(root);
             bindCustomSelects(root);
@@ -1784,6 +1973,11 @@
         root.addEventListener("submit", function (event) {
             var isSaveAlert = event.submitter && event.submitter.name === "saveAlert";
             clearAlertTargetValidity(root);
+            if (!validateLocationSelections(root)) {
+                event.preventDefault();
+                return;
+            }
+
             if (isSaveAlert && !validatePriceAlertModal()) {
                 event.preventDefault();
                 return;

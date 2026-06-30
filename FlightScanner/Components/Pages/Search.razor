@@ -30,7 +30,10 @@
         <div class="flight-search-bar">
             <div class="travel-field location-field" data-location-box="origin">
                 <label for="origin">@T("From")</label>
-                <input id="origin" name="origin" class="travel-input location-input" value="@Origin" data-location-input="origin" autocomplete="off" placeholder="@T("CountryCityAirport")" required />
+                <div class="field-control-shell">
+                    <input id="origin" name="origin" class="travel-input location-input" value="@Origin" data-location-input="origin" data-location-selected-value="@Origin" data-location-invalid-message="@T("ChooseSuggestedLocation")" autocomplete="off" placeholder="@T("CountryCityAirport")" required />
+                    <button type="button" class="field-clear-button" data-location-clear="origin" aria-label="@T("Clear")" hidden="@string.IsNullOrWhiteSpace(Origin)">×</button>
+                </div>
                 <div class="location-menu" data-location-menu="origin" hidden></div>
             </div>
 
@@ -38,7 +41,10 @@
 
             <div class="travel-field location-field" data-location-box="destination">
                 <label for="destination">@T("To")</label>
-                <input id="destination" name="destination" class="travel-input location-input" value="@Destination" data-location-input="destination" autocomplete="off" placeholder="@T("CountryCityAirport")" required />
+                <div class="field-control-shell">
+                    <input id="destination" name="destination" class="travel-input location-input" value="@Destination" data-location-input="destination" data-location-selected-value="@Destination" data-location-invalid-message="@T("ChooseSuggestedLocation")" autocomplete="off" placeholder="@T("CountryCityAirport")" required />
+                    <button type="button" class="field-clear-button" data-location-clear="destination" aria-label="@T("Clear")" hidden="@string.IsNullOrWhiteSpace(Destination)">×</button>
+                </div>
                 <div class="location-menu" data-location-menu="destination" hidden></div>
             </div>
 
@@ -53,7 +59,8 @@
             <div class="travel-field compact-field date-time-field" data-specific-date-field hidden="@IsFlexibleDates">
                 <label for="depart">@T("Depart")</label>
                 <div class="date-picker-field">
-                    <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" disabled="@IsFlexibleDates" />
+                    <input id="depart" name="depart" class="travel-input date-text-input" value="@Depart" data-flight-date="depart" inputmode="none" autocomplete="off" placeholder="@T("AddDate")" readonly disabled="@IsFlexibleDates" />
+                    <button type="button" class="field-clear-button" data-date-clear="depart" aria-label="@T("Clear")" disabled="@IsFlexibleDates" hidden="@string.IsNullOrWhiteSpace(Depart)">×</button>
                     <button type="button" class="date-picker-button" data-date-toggle="depart" aria-label="@T("Depart")" disabled="@IsFlexibleDates">▦</button>
                 </div>
                 <div class="date-time-window">
@@ -79,7 +86,8 @@
             <div class="travel-field compact-field date-time-field" data-return-field data-specific-date-field hidden="@(IsOneWay || IsFlexibleDates)">
                 <label for="returnDate">@T("ReturnDate")</label>
                 <div class="date-picker-field">
-                    <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" disabled="@(IsOneWay || IsFlexibleDates)" />
+                    <input id="returnDate" name="returnDate" class="travel-input date-text-input" value="@ReturnDate" data-flight-date="return" inputmode="none" autocomplete="off" placeholder="@T("AddDate")" readonly disabled="@(IsOneWay || IsFlexibleDates)" />
+                    <button type="button" class="field-clear-button" data-date-clear="return" aria-label="@T("Clear")" disabled="@(IsOneWay || IsFlexibleDates)" hidden="@string.IsNullOrWhiteSpace(ReturnDate)">×</button>
                     <button type="button" class="date-picker-button" data-date-toggle="return" aria-label="@T("ReturnDate")">▦</button>
                 </div>
                 <div class="date-time-window" data-return-time-field>
@@ -1260,11 +1268,17 @@ else
             return false;
         }
 
-        var originType = ParseLocationType(OriginType, Origin);
-        var destinationType = ParseLocationType(DestinationType, Destination);
+        if (!TryResolvePostedLocation(OriginType, Origin, OriginCode, out var originType, out var origin, out validationMessage))
+        {
+            return false;
+        }
+
+        if (!TryResolvePostedLocation(DestinationType, Destination, DestinationCode, out var destinationType, out var destination, out validationMessage))
+        {
+            return false;
+        }
+
         var currency = string.IsNullOrWhiteSpace(Currency) ? "MAD" : Currency.Trim().ToUpperInvariant();
-        var origin = ResolvePostedLocationValue(originType, Origin, OriginCode);
-        var destination = ResolvePostedLocationValue(destinationType, Destination, DestinationCode);
         var outboundTimeFromHour = ParseTimeHour(OutboundTimeFrom);
         var outboundTimeToHour = ParseTimeHour(OutboundTimeTo);
         var returnTimeFromHour = IsOneWay ? null : ParseTimeHour(ReturnTimeFrom);
@@ -1348,27 +1362,49 @@ else
         FlexibleStayDays = Math.Clamp(FlexibleStayDays, 1, 365);
     }
 
-    private static string ResolvePostedLocationValue(LocationType type, string displayValue, string? postedCode)
+    private bool TryResolvePostedLocation(
+        string typeValue,
+        string displayValue,
+        string? postedCode,
+        out LocationType type,
+        out string resolvedValue,
+        out string? validationMessage)
     {
-        if (type is LocationType.Airport)
+        type = default;
+        resolvedValue = "";
+        validationMessage = null;
+
+        if (string.IsNullOrWhiteSpace(displayValue))
         {
-            return CleanLocationValue(displayValue);
+            validationMessage = T("ChooseSuggestedLocation");
+            return false;
         }
 
-        return !string.IsNullOrWhiteSpace(postedCode)
-            ? postedCode.Trim().ToUpperInvariant()
-            : CleanLocationValue(displayValue);
-    }
-
-    private LocationType ParseLocationType(string value, string locationValue)
-    {
-        if (Enum.TryParse<LocationType>(value, ignoreCase: true, out var parsed))
+        if (!Enum.TryParse<LocationType>(typeValue, ignoreCase: true, out type))
         {
-            return parsed;
+            validationMessage = T("ChooseSuggestedLocation");
+            return false;
         }
 
-        var exact = FindBestLocation(locationValue);
-        return exact?.Type ?? (locationValue.Trim().Length == 3 ? LocationType.Airport : LocationType.City);
+        var code = postedCode?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            validationMessage = T("ChooseSuggestedLocation");
+            return false;
+        }
+
+        var selectedType = type;
+        var match = locations.FirstOrDefault(location =>
+            location.Type == selectedType &&
+            location.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            validationMessage = T("ChooseSuggestedLocation");
+            return false;
+        }
+
+        resolvedValue = match.Code;
+        return true;
     }
 
     private FlightLocation? FindBestLocation(string value)

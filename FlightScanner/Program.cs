@@ -206,11 +206,14 @@ app.MapGet("/api/locations/suggest", async (
 
     await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
     var lowered = q.ToLowerInvariant();
+    var culture = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
     var regionalLocations = await db.FlightLocations.AsNoTracking()
         .Where(location =>
             (location.Type == LocationType.Country || location.Type == LocationType.Continent) &&
             (location.Code.ToLower().Contains(lowered) ||
                 location.Name.ToLower().Contains(lowered) ||
+                (location.NameFr != null && location.NameFr.ToLower().Contains(lowered)) ||
+                (location.NameAr != null && location.NameAr.ToLower().Contains(lowered)) ||
                 location.Continent.ToLower().Contains(lowered)))
         .Take(80)
         .ToListAsync(cancellationToken);
@@ -220,7 +223,11 @@ app.MapGet("/api/locations/suggest", async (
             location.Type != LocationType.Continent &&
             (location.Code.ToLower().Contains(lowered) ||
                 location.Name.ToLower().Contains(lowered) ||
+                (location.NameFr != null && location.NameFr.ToLower().Contains(lowered)) ||
+                (location.NameAr != null && location.NameAr.ToLower().Contains(lowered)) ||
                 (location.CountryName != null && location.CountryName.ToLower().Contains(lowered)) ||
+                (location.CountryNameFr != null && location.CountryNameFr.ToLower().Contains(lowered)) ||
+                (location.CountryNameAr != null && location.CountryNameAr.ToLower().Contains(lowered)) ||
                 location.Continent.ToLower().Contains(lowered)))
         .Take(220)
         .ToListAsync(cancellationToken);
@@ -233,34 +240,57 @@ app.MapGet("/api/locations/suggest", async (
     var suggestions = locations
         .OrderByDescending(location => location.Code.Equals(q, StringComparison.OrdinalIgnoreCase))
         .ThenByDescending(location => location.Type == LocationType.Country &&
-            location.Name.Equals(q, StringComparison.OrdinalIgnoreCase))
+            LocalizedLocationName(location, culture).Equals(q, StringComparison.OrdinalIgnoreCase))
         .ThenByDescending(location => location.Type == LocationType.Country &&
-            location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            LocalizedLocationName(location, culture).StartsWith(q, StringComparison.OrdinalIgnoreCase))
         .ThenByDescending(location => location.Type == LocationType.Continent &&
-            location.Name.Equals(q, StringComparison.OrdinalIgnoreCase))
+            LocalizedLocationName(location, culture).Equals(q, StringComparison.OrdinalIgnoreCase))
         .ThenByDescending(location => location.Type == LocationType.Continent &&
-            location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
-        .ThenByDescending(location => location.Name.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+            LocalizedLocationName(location, culture).StartsWith(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => LocalizedLocationName(location, culture).StartsWith(q, StringComparison.OrdinalIgnoreCase))
         .ThenBy(location => location.Type == LocationType.Country ? 0 :
             location.Type == LocationType.City ? 1 :
             location.Type == LocationType.Airport ? 2 : 3)
-        .ThenBy(location => location.Name)
+        .ThenBy(location => LocalizedLocationName(location, culture))
         .Take(12)
-        .Select(location => new
-        {
-            value = location.Type == LocationType.Airport ? location.Code : location.Name,
-            type = location.Type.ToString(),
-            code = location.Code,
-            primary = location.Type == LocationType.Airport ? $"{location.Code} · {location.Name}" : location.Name,
-            secondary = location.Type switch
-            {
-                LocationType.Continent => UiText.T("Continent"),
-                LocationType.Country => $"{location.Continent} · {UiText.T("Country")}",
-                _ => $"{location.CountryName} · {location.Continent}"
-            }
-        });
+        .Select(location => BuildLocationSuggestion(location, culture));
 
     return Results.Ok(suggestions);
+}).RequireAuthorization();
+
+app.MapGet("/api/locations/resolve", async (
+    string q,
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    CancellationToken cancellationToken) =>
+{
+    q = q.Trim();
+    if (q.Length < 2)
+    {
+        return Results.Ok<object?>(null);
+    }
+
+    await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+    var lowered = q.ToLowerInvariant();
+    var culture = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+    var matches = await db.FlightLocations.AsNoTracking()
+        .Where(location =>
+            location.Code.ToLower() == lowered ||
+            location.Name.ToLower() == lowered ||
+            (location.NameFr != null && location.NameFr.ToLower() == lowered) ||
+            (location.NameAr != null && location.NameAr.ToLower() == lowered))
+        .Take(40)
+        .ToListAsync(cancellationToken);
+
+    var match = matches
+        .OrderByDescending(location => location.Code.Equals(q, StringComparison.OrdinalIgnoreCase))
+        .ThenByDescending(location => LocalizedLocationName(location, culture).Equals(q, StringComparison.OrdinalIgnoreCase))
+        .ThenBy(location => location.Type == LocationType.Country ? 0 :
+            location.Type == LocationType.City ? 1 :
+            location.Type == LocationType.Airport ? 2 : 3)
+        .ThenBy(location => LocalizedLocationName(location, culture))
+        .FirstOrDefault();
+
+    return Results.Ok(match is null ? null : BuildLocationSuggestion(match, culture));
 }).RequireAuthorization();
 
 app.MapGet("/api/push/public-key", async (IDbContextFactory<ApplicationDbContext> dbFactory) =>
@@ -574,6 +604,68 @@ static async Task<(string? ErrorKey, int Limit)> ValidateActiveAlertPolicyAsync(
     }
 
     return (null, 0);
+}
+
+static string LocalizedLocationName(FlightLocation location, string culture)
+{
+    return culture switch
+    {
+        "fr" when !string.IsNullOrWhiteSpace(location.NameFr) => location.NameFr,
+        "ar" when !string.IsNullOrWhiteSpace(location.NameAr) => location.NameAr,
+        _ => location.Name
+    };
+}
+
+static string LocalizedCountryName(FlightLocation location, string culture)
+{
+    return culture switch
+    {
+        "fr" when !string.IsNullOrWhiteSpace(location.CountryNameFr) => location.CountryNameFr,
+        "ar" when !string.IsNullOrWhiteSpace(location.CountryNameAr) => location.CountryNameAr,
+        _ => location.CountryName ?? ""
+    };
+}
+
+static string LocalizedContinent(FlightLocation location, string culture)
+{
+    return culture switch
+    {
+        "fr" when !string.IsNullOrWhiteSpace(location.ContinentFr) => location.ContinentFr,
+        "ar" when !string.IsNullOrWhiteSpace(location.ContinentAr) => location.ContinentAr,
+        _ => location.Continent
+    };
+}
+
+static string LocalizedLocationType(LocationType type)
+{
+    return type switch
+    {
+        LocationType.Airport => UiText.T("Airport"),
+        LocationType.City => UiText.T("City"),
+        LocationType.Country => UiText.T("Country"),
+        LocationType.Continent => UiText.T("Continent"),
+        _ => type.ToString()
+    };
+}
+
+static object BuildLocationSuggestion(FlightLocation location, string culture)
+{
+    return new
+    {
+        value = location.Type == LocationType.Airport ? location.Code : LocalizedLocationName(location, culture),
+        type = location.Type.ToString(),
+        typeLabel = LocalizedLocationType(location.Type),
+        code = location.Code,
+        primary = location.Type == LocationType.Airport
+            ? $"{location.Code} · {LocalizedLocationName(location, culture)}"
+            : LocalizedLocationName(location, culture),
+        secondary = location.Type switch
+        {
+            LocationType.Continent => UiText.T("Continent"),
+            LocationType.Country => $"{LocalizedContinent(location, culture)} · {UiText.T("Country")}",
+            _ => $"{LocalizedCountryName(location, culture)} · {LocalizedContinent(location, culture)}"
+        }
+    };
 }
 
 public sealed record PushSubscriptionInput(string Endpoint, PushSubscriptionKeys Keys);

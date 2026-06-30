@@ -1587,6 +1587,56 @@ body.modal-open {
         color: #737d8c;
     }
 
+.field-control-shell {
+    align-items: center;
+    display: flex;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+    .field-control-shell .travel-input,
+    .date-picker-field .travel-input {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+.field-clear-button {
+    align-items: center;
+    background: #eef4f8;
+    border: 1px solid #d7e2ea;
+    border-radius: 999px;
+    color: #415166;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 1rem;
+    font-weight: 900;
+    height: 1.75rem;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+    width: 1.75rem;
+}
+
+    .field-clear-button[hidden] {
+        display: none;
+    }
+
+    .field-clear-button:hover,
+    .field-clear-button:focus {
+        background: #dff2ef;
+        border-color: #9bd4cc;
+        color: var(--teal-dark);
+        outline: none;
+        transform: translateY(-1px);
+    }
+
+    .field-clear-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+        transform: none;
+    }
+
 .native-select-hidden {
     display: none !important;
 }

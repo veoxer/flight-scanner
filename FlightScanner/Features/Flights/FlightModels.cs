@@ -26,12 +26,24 @@ public sealed class FlightLocation
     public string Code { get; set; } = "";
     [MaxLength(120)]
     public string Name { get; set; } = "";
+    [MaxLength(120)]
+    public string? NameFr { get; set; }
+    [MaxLength(120)]
+    public string? NameAr { get; set; }
     [MaxLength(2)]
     public string? CountryCode { get; set; }
     [MaxLength(80)]
     public string? CountryName { get; set; }
+    [MaxLength(80)]
+    public string? CountryNameFr { get; set; }
+    [MaxLength(80)]
+    public string? CountryNameAr { get; set; }
     [MaxLength(32)]
     public string Continent { get; set; } = "";
+    [MaxLength(32)]
+    public string? ContinentFr { get; set; }
+    [MaxLength(32)]
+    public string? ContinentAr { get; set; }
 }
 
 public sealed class FlightLocationIdentifier
