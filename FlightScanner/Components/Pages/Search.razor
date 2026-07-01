@@ -19,7 +19,7 @@
         <button type="button" class="trip-mode-button @(IsOneWay ? "active" : "")" data-trip-mode-option="OneWay">@T("OneWay")</button>
     </div>
 
-    <form id="flight-search-form" method="get" action="/search" class="search-native-form" autocomplete="off" data-enhance="false">
+    <form id="flight-search-form" method="get" action="/search#fare-results" class="search-native-form" autocomplete="off" data-enhance="false">
         <input type="hidden" name="tripType" value="@TripType" data-trip-type-value />
         <input type="hidden" name="dateMode" value="@DateMode" data-date-mode-value />
         <input type="hidden" name="originType" data-location-type="origin" value="@OriginType" />
@@ -304,7 +304,7 @@ else
         @if (offers.Count > 0)
         {
             <div data-results-cache-source>
-                <div class="price-alert-entry">
+                <div id="fare-results" class="price-alert-entry" data-results-scroll-anchor>
                     <button type="button"
                             class="price-alert-button"
                             data-price-alert-open
@@ -771,6 +771,7 @@ else
                 .ThenBy(location => location.Name)
                 .Take(2000)
                 .ToListAsync();
+            await AddPostedLocationsAsync(db);
             await LoadAlertPolicyStateAsync(db);
 
             if (!Run && !SaveAlert)
@@ -1360,6 +1361,63 @@ else
         FlexibleMonth = FlexibleMonth is >= 1 and <= 12 ? FlexibleMonth : defaultFlexibleDate.Month;
         FlexibleDepartureDay = ParseFlexibleDepartureDay().ToString();
         FlexibleStayDays = Math.Clamp(FlexibleStayDays, 1, 365);
+    }
+
+    private async Task AddPostedLocationsAsync(ApplicationDbContext db)
+    {
+        foreach (var postedLocation in PostedLocations())
+        {
+            if (locations.Any(location =>
+                location.Type == postedLocation.Type &&
+                location.Code.Equals(postedLocation.Code, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var match = await db.FlightLocations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(location =>
+                    location.Type == postedLocation.Type &&
+                    location.Code == postedLocation.Code);
+            if (match is not null)
+            {
+                locations.Add(match);
+            }
+        }
+    }
+
+    private IEnumerable<(LocationType Type, string Code)> PostedLocations()
+    {
+        if (TryBuildPostedLocation(OriginType, OriginCode, out var origin))
+        {
+            yield return origin;
+        }
+
+        if (TryBuildPostedLocation(DestinationType, DestinationCode, out var destination))
+        {
+            yield return destination;
+        }
+    }
+
+    private static bool TryBuildPostedLocation(
+        string typeValue,
+        string? codeValue,
+        out (LocationType Type, string Code) location)
+    {
+        location = default;
+        if (!Enum.TryParse<LocationType>(typeValue, ignoreCase: true, out var type))
+        {
+            return false;
+        }
+
+        var code = codeValue?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return false;
+        }
+
+        location = (type, code);
+        return true;
     }
 
     private bool TryResolvePostedLocation(

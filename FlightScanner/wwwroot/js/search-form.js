@@ -1,6 +1,7 @@
 (function () {
     var searchStateKey = "flightscanner.search.filters";
     var searchResultsKey = "flightscanner.search.results";
+    var searchStateSaveTimer = null;
 
     function todayDate() {
         var now = new Date();
@@ -88,6 +89,10 @@
 
     function renderCalendar(field, depart, ret, visibleDate) {
         var wrapper = field.closest(".date-picker-field");
+        if (!wrapper) {
+            return;
+        }
+
         var existing = wrapper.querySelector(".date-calendar");
         if (existing) {
             existing.remove();
@@ -159,11 +164,13 @@
                 button.classList.add("today");
             }
             button.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
                 var picked = new Date(Number(event.currentTarget.dataset.year), Number(event.currentTarget.dataset.month), Number(event.currentTarget.dataset.day));
                 field.value = formatDisplayDate(picked);
                 enforceDatePair(depart, ret, field);
-                field.dispatchEvent(new Event("change", { bubbles: true }));
                 calendar.remove();
+                field.dispatchEvent(new Event("change", { bubbles: true }));
             });
             button.dataset.year = String(date.getFullYear());
             button.dataset.month = String(date.getMonth());
@@ -192,6 +199,12 @@
     }
 
     function showCalendar(field, depart, ret) {
+        var wrapper = field.closest(".date-picker-field");
+        var current = wrapper && wrapper.querySelector(".date-calendar");
+        if (current) {
+            return;
+        }
+
         document.querySelectorAll(".date-calendar").forEach(function (calendar) {
             calendar.remove();
         });
@@ -270,11 +283,11 @@
                 }
 
                 target.value = "";
-                target.dispatchEvent(new Event("change", { bubbles: true }));
-                syncClearButtonForInput(target, button);
                 document.querySelectorAll(".date-calendar").forEach(function (calendar) {
                     calendar.remove();
                 });
+                syncClearButtonForInput(target, button);
+                target.dispatchEvent(new Event("change", { bubbles: true }));
             });
         });
         syncDateClearButtons();
@@ -985,6 +998,14 @@
         }
     }
 
+    function rememberLocationSelection(input) {
+        var form = input.form;
+        if (form) {
+            window.clearTimeout(searchStateSaveTimer);
+            saveFormState(form);
+        }
+    }
+
     function createOption(item, input, typeInput, codeInput, menu) {
         var button = document.createElement("button");
         button.type = "button";
@@ -994,8 +1015,10 @@
         button.querySelector(".location-kind").textContent = item.typeLabel || item.type;
         button.querySelector("strong").textContent = item.primary;
         button.querySelector("small").textContent = item.secondary;
-        button.addEventListener("mousedown", function (event) {
+
+        function chooseLocation(event) {
             event.preventDefault();
+            event.stopPropagation();
             input.value = item.value;
             input.dataset.locationSelectedValue = item.value;
             input.setCustomValidity("");
@@ -1003,7 +1026,16 @@
             typeInput.value = item.type;
             codeInput.value = item.code || "";
             menu.hidden = true;
-        });
+            rememberLocationSelection(input);
+        }
+
+        if (window.PointerEvent) {
+            button.addEventListener("pointerdown", chooseLocation);
+        } else {
+            button.addEventListener("mousedown", chooseLocation);
+            button.addEventListener("touchstart", chooseLocation);
+        }
+        button.addEventListener("click", chooseLocation);
         return button;
     }
 
@@ -1037,6 +1069,7 @@
                 codeInput.value = item.code || "";
                 syncClearButtonForInput(input, root.querySelector("[data-location-clear='" + name + "']"));
                 menu.hidden = true;
+                rememberLocationSelection(input);
             }
 
             function invalidateTypedLocation() {
@@ -1853,7 +1886,7 @@
             return Math.max(1, Number(pageSize.value) || 10);
         }
 
-        function render() {
+        function render(animate) {
             var allItems = cards();
             var items = activeCards();
             var size = selectedPageSize();
@@ -1879,24 +1912,33 @@
             if (status) {
                 status.textContent = page + " / " + pageCount;
             }
+
+            if (animate && grid) {
+                grid.classList.remove("results-page-enter");
+                void grid.offsetWidth;
+                grid.classList.add("results-page-enter");
+                window.setTimeout(function () {
+                    grid.classList.remove("results-page-enter");
+                }, 260);
+            }
         }
 
         if (pageSize) {
             pageSize.addEventListener("change", function () {
                 page = 1;
-                render();
+                render(true);
             });
         }
         if (previous) {
             previous.addEventListener("click", function () {
                 page--;
-                render();
+                render(true);
             });
         }
         if (next) {
             next.addEventListener("click", function () {
                 page++;
-                render();
+                render(true);
             });
         }
         if (tabs) {
@@ -1907,7 +1949,7 @@
                     tabs.querySelectorAll("[data-result-tab]").forEach(function (item) {
                         item.classList.toggle("active", item === button);
                     });
-                    render();
+                    render(true);
                 });
             });
         }
@@ -1976,6 +2018,13 @@
         sessionStorage.setItem(searchStateKey, JSON.stringify(formState(root)));
     }
 
+    function scheduleFormStateSave(root) {
+        window.clearTimeout(searchStateSaveTimer);
+        searchStateSaveTimer = window.setTimeout(function () {
+            saveFormState(root);
+        }, 120);
+    }
+
     function bindSearchSubmit(root) {
         if (root.dataset.boundSearchSubmit === "true") {
             return;
@@ -1984,10 +2033,10 @@
         root.dataset.boundSearchSubmit = "true";
         root.dataset.submitting = "false";
         root.addEventListener("input", function () {
-            saveFormState(root);
+            scheduleFormStateSave(root);
         });
         root.addEventListener("change", function () {
-            saveFormState(root);
+            scheduleFormStateSave(root);
         });
         root.addEventListener("click", function (event) {
             var submitter = event.target.closest("button[type='submit']");
