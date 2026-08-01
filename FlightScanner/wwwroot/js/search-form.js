@@ -501,7 +501,6 @@
     function bindCustomSelects(root) {
         root.querySelectorAll("select[data-custom-select]").forEach(function (select) {
             if (select.dataset.boundCustomSelect === "true") {
-                select.dispatchEvent(new Event("customselectrefresh"));
                 return;
             }
 
@@ -579,16 +578,12 @@
                         menu.hidden = true;
                     }
 
-                    item.addEventListener("pointerdown", chooseOption);
-                    item.addEventListener("click", function (event) {
-                        if (event.detail !== 0) {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            return;
+                    item.addEventListener("pointerdown", function (event) {
+                        if (event.pointerType === "mouse" && event.button === 0) {
+                            chooseOption(event);
                         }
-
-                        chooseOption(event);
                     });
+                    item.addEventListener("click", chooseOption);
                     list.appendChild(item);
                 });
             }
@@ -605,7 +600,9 @@
                 if (search) {
                     search.value = "";
                     renderOptions("");
-                    search.focus();
+                    if (!window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+                        search.focus();
+                    }
                 }
             }
 
@@ -1849,16 +1846,20 @@
     function bindResultPagination() {
         var source = document.querySelector("[data-results-cache-source]");
         var grid = source && source.querySelector("[data-results-grid]");
-        var controls = source && source.querySelector("[data-result-pagination]");
-        if (!source || !grid || !controls || controls.dataset.boundResultPagination === "true") {
+        var controls = source
+            ? Array.prototype.slice.call(source.querySelectorAll("[data-result-pagination]"))
+            : [];
+        if (!source || !grid || !controls.length || source.dataset.boundResultPagination === "true") {
             return;
         }
 
-        controls.dataset.boundResultPagination = "true";
-        var pageSize = controls.querySelector("[data-results-page-size]");
-        var previous = controls.querySelector("[data-results-prev]");
-        var next = controls.querySelector("[data-results-next]");
-        var status = controls.querySelector("[data-results-page-status]");
+        source.dataset.boundResultPagination = "true";
+        var pageSizes = controls.map(function (control) {
+            return control.querySelector("[data-results-page-size]");
+        }).filter(Boolean);
+        var pageSize = pageSizes[0];
+        var pageLoader = source.querySelector("[data-results-page-loading]");
+        var pageLoaderTimer = null;
         var tabs = source.querySelector("[data-result-tabs]");
         var activeKind = "Departure";
         var page = 1;
@@ -1902,18 +1903,30 @@
                 item.hidden = !(index >= start && index < end);
             });
 
-            controls.hidden = items.length <= 1;
-            if (previous) {
-                previous.disabled = page <= 1;
-            }
-            if (next) {
-                next.disabled = page >= pageCount;
-            }
-            if (status) {
-                status.textContent = page + " / " + pageCount;
-            }
+            controls.forEach(function (control) {
+                control.hidden = items.length <= 1;
+                var previous = control.querySelector("[data-results-prev]");
+                var next = control.querySelector("[data-results-next]");
+                var status = control.querySelector("[data-results-page-status]");
+                if (previous) {
+                    previous.disabled = page <= 1;
+                }
+                if (next) {
+                    next.disabled = page >= pageCount;
+                }
+                if (status) {
+                    status.textContent = page + " / " + pageCount;
+                }
+            });
 
             if (animate && grid) {
+                if (pageLoader && window.matchMedia("(max-width: 720px)").matches) {
+                    window.clearTimeout(pageLoaderTimer);
+                    pageLoader.hidden = false;
+                    pageLoaderTimer = window.setTimeout(function () {
+                        pageLoader.hidden = true;
+                    }, 260);
+                }
                 grid.classList.remove("results-page-enter");
                 void grid.offsetWidth;
                 grid.classList.add("results-page-enter");
@@ -1923,24 +1936,33 @@
             }
         }
 
-        if (pageSize) {
-            pageSize.addEventListener("change", function () {
+        pageSizes.forEach(function (sizeControl) {
+            sizeControl.addEventListener("change", function () {
+                pageSizes.forEach(function (item) {
+                    item.value = sizeControl.value;
+                    item.dispatchEvent(new Event("customselectrefresh"));
+                });
+                pageSize = sizeControl;
                 page = 1;
                 render(true);
             });
-        }
-        if (previous) {
-            previous.addEventListener("click", function () {
-                page--;
-                render(true);
-            });
-        }
-        if (next) {
-            next.addEventListener("click", function () {
-                page++;
-                render(true);
-            });
-        }
+        });
+        controls.forEach(function (control) {
+            var previous = control.querySelector("[data-results-prev]");
+            var next = control.querySelector("[data-results-next]");
+            if (previous) {
+                previous.addEventListener("click", function () {
+                    page--;
+                    render(true);
+                });
+            }
+            if (next) {
+                next.addEventListener("click", function () {
+                    page++;
+                    render(true);
+                });
+            }
+        });
         if (tabs) {
             tabs.querySelectorAll("[data-result-tab]").forEach(function (button) {
                 button.addEventListener("click", function () {

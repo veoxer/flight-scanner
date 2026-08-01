@@ -304,6 +304,12 @@ else
         @if (offers.Count > 0)
         {
             <div data-results-cache-source>
+                <div class="results-page-loading" data-results-page-loading role="status" aria-live="polite" hidden>
+                    <div class="results-page-loading-panel">
+                        <span class="search-loading-spinner" aria-hidden="true"></span>
+                        <strong>@T("PreparingResults")</strong>
+                    </div>
+                </div>
                 <div id="fare-results" class="price-alert-entry" data-results-scroll-anchor>
                     <button type="button"
                             class="price-alert-button"
@@ -483,6 +489,19 @@ else
                             </div>
                         </details>
                     }
+                </div>
+                <div class="result-pagination-controls result-pagination-bottom" data-result-pagination>
+                    <label>@T("PageSize")</label>
+                    <select class="form-select" data-results-page-size data-custom-select aria-label="@T("PageSize")">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="all">@T("All")</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-results-prev>@T("Previous")</button>
+                    <span data-results-page-status></span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-results-next>@T("Next")</button>
                 </div>
             </div>
         }
