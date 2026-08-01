@@ -1858,7 +1858,7 @@
             return control.querySelector("[data-results-page-size]");
         }).filter(Boolean);
         var pageSize = pageSizes[0];
-        var pageLoader = source.querySelector("[data-results-page-loading]");
+        var pageLoader = document.querySelector("[data-results-page-loading]");
         var pageLoaderTimer = null;
         var tabs = source.querySelector("[data-result-tabs]");
         var activeKind = "Departure";
@@ -1920,12 +1920,12 @@
             });
 
             if (animate && grid) {
-                if (pageLoader && window.matchMedia("(max-width: 720px)").matches) {
+                if (pageLoader) {
                     window.clearTimeout(pageLoaderTimer);
                     pageLoader.hidden = false;
                     pageLoaderTimer = window.setTimeout(function () {
                         pageLoader.hidden = true;
-                    }, 260);
+                    }, 1000);
                 }
                 grid.classList.remove("results-page-enter");
                 void grid.offsetWidth;

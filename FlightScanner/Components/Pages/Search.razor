@@ -271,6 +271,13 @@
     </div>
 </section>
 
+<div class="results-page-loading" data-results-page-loading role="status" aria-live="polite" hidden>
+    <div class="results-page-loading-panel">
+        <span class="search-loading-spinner" aria-hidden="true"></span>
+        <strong>@T("PreparingResults")</strong>
+    </div>
+</div>
+
 @if (!string.IsNullOrWhiteSpace(message))
 {
     <div class="alert @(messageIsError ? "alert-danger" : "alert-info") mt-3">@message</div>
@@ -304,12 +311,6 @@ else
         @if (offers.Count > 0)
         {
             <div data-results-cache-source>
-                <div class="results-page-loading" data-results-page-loading role="status" aria-live="polite" hidden>
-                    <div class="results-page-loading-panel">
-                        <span class="search-loading-spinner" aria-hidden="true"></span>
-                        <strong>@T("PreparingResults")</strong>
-                    </div>
-                </div>
                 <div id="fare-results" class="price-alert-entry" data-results-scroll-anchor>
                     <button type="button"
                             class="price-alert-button"

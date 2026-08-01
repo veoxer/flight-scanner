@@ -500,11 +500,27 @@ h1:focus {
 }
 
 .results-page-loading {
-    display: none;
+    align-items: center;
+    background: rgba(2, 6, 23, 0.32);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    position: fixed;
+    z-index: 70;
 }
 
 .results-page-loading[hidden] {
     display: none;
+}
+
+.results-page-loading-panel {
+    align-items: center;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 18px 50px rgba(2, 6, 23, 0.24);
+    display: inline-flex;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
 }
 
 .result-card, .alert-row {
@@ -2418,26 +2434,6 @@ body.modal-open {
 }
 
 @media (max-width: 720px) {
-
-    .results-page-loading {
-        align-items: center;
-        background: rgba(2, 6, 23, 0.32);
-        display: flex;
-        inset: 0;
-        justify-content: center;
-        position: fixed;
-        z-index: 70;
-    }
-
-    .results-page-loading-panel {
-        align-items: center;
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 18px 50px rgba(2, 6, 23, 0.24);
-        display: inline-flex;
-        gap: 0.7rem;
-        padding: 0.85rem 1rem;
-    }
 
     .flight-search-bar {
         grid-template-columns: 1fr;
