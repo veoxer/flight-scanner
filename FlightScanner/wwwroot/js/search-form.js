@@ -499,12 +499,24 @@
     }
 
     function bindCustomSelects(root) {
+        var useNativeMobilePicker = navigator.maxTouchPoints > 0 &&
+            window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+
         root.querySelectorAll("select[data-custom-select]").forEach(function (select) {
             if (select.dataset.boundCustomSelect === "true") {
                 return;
             }
 
             select.dataset.boundCustomSelect = "true";
+
+            // Real phones already provide a touch-tested, scrollable picker for a
+            // native select. Keep the custom searchable UI for mouse/desktop use,
+            // where its richer presentation is useful and pointer events are stable.
+            if (useNativeMobilePicker) {
+                select.classList.add("native-mobile-select");
+                return;
+            }
+
             select.classList.add("native-select-hidden");
 
             var shell = document.createElement("div");
@@ -1979,6 +1991,16 @@
                 window.setTimeout(function () {
                     grid.classList.remove("results-page-enter");
                 }, 260);
+
+                var firstVisibleResult = items[start];
+                if (firstVisibleResult) {
+                    window.requestAnimationFrame(function () {
+                        firstVisibleResult.scrollIntoView({
+                            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+                            block: "start"
+                        });
+                    });
+                }
             }
         }
 

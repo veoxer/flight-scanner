@@ -304,6 +304,10 @@ h1:focus {
     margin-top: 1rem;
 }
 
+.results-grid [data-flight-result] {
+    scroll-margin-top: 1rem;
+}
+
 [data-results-cache-source] {
     animation: results-arrive 0.28s ease both;
     scroll-margin-top: 1rem;
@@ -1784,6 +1788,18 @@ body.modal-open {
 
 .native-select-hidden {
     display: none !important;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    select[data-custom-select].native-mobile-select {
+        cursor: pointer;
+        font-size: 1rem;
+    }
+
+    .date-time-window select[data-custom-select].native-mobile-select {
+        min-height: 2.2rem;
+        padding: 0.25rem 0.35rem;
+    }
 }
 
 .custom-select-shell {
