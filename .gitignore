@@ -1,6 +1,7 @@
 **/bin/
 **/obj/
 **/.vs/
+/FlightScanner/.vs/
 *.csproj.user
 **/*.csproj.user
 **/.verify-build/
