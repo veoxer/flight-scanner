@@ -578,12 +578,58 @@
                         menu.hidden = true;
                     }
 
+                    var touchPointer = null;
+                    var ignoreNextClick = false;
                     item.addEventListener("pointerdown", function (event) {
-                        if (event.pointerType === "mouse" && event.button === 0) {
+                        if (event.pointerType === "mouse") {
+                            if (event.button === 0) {
+                                chooseOption(event);
+                            }
+                            return;
+                        }
+
+                        touchPointer = {
+                            id: event.pointerId,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            moved: false
+                        };
+                    });
+                    item.addEventListener("pointermove", function (event) {
+                        if (!touchPointer || touchPointer.id !== event.pointerId) {
+                            return;
+                        }
+
+                        if (Math.abs(event.clientX - touchPointer.startX) > 12 ||
+                            Math.abs(event.clientY - touchPointer.startY) > 12) {
+                            touchPointer.moved = true;
+                        }
+                    });
+                    item.addEventListener("pointerup", function (event) {
+                        if (!touchPointer || touchPointer.id !== event.pointerId) {
+                            return;
+                        }
+
+                        var shouldChoose = !touchPointer.moved;
+                        touchPointer = null;
+                        if (shouldChoose) {
+                            ignoreNextClick = true;
                             chooseOption(event);
                         }
                     });
-                    item.addEventListener("click", chooseOption);
+                    item.addEventListener("pointercancel", function () {
+                        touchPointer = null;
+                    });
+                    item.addEventListener("click", function (event) {
+                        if (ignoreNextClick) {
+                            ignoreNextClick = false;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+
+                        chooseOption(event);
+                    });
                     list.appendChild(item);
                 });
             }

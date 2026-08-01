@@ -1,4 +1,5 @@
 @using System.Globalization
+@using FlightScanner.Features.Localization
 
 <!DOCTYPE html>
 <html lang="@CultureInfo.CurrentUICulture.TwoLetterISOLanguageName" dir="@(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar" ? "rtl" : "ltr")">
@@ -25,6 +26,17 @@
 
 <body>
     <Routes @rendermode="PageRenderMode" />
+    <div id="app-navigation-loading" class="app-navigation-loading" data-app-navigation-loading data-permanent
+         role="status" aria-label="@UiText.T("LoadingPage")" aria-live="polite" hidden>
+        <div class="sk-chase app-navigation-spinner" aria-hidden="true">
+            <div class="sk-chase-dot"></div>
+            <div class="sk-chase-dot"></div>
+            <div class="sk-chase-dot"></div>
+            <div class="sk-chase-dot"></div>
+            <div class="sk-chase-dot"></div>
+            <div class="sk-chase-dot"></div>
+        </div>
+    </div>
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="@Assets["js/search-form.js"]"></script>
