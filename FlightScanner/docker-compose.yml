@@ -1,8 +1,10 @@
 services:
   flightscanner:
+    pull_policy: build
     build:
       context: .
       dockerfile: Dockerfile
+      pull: true
     container_name: flightscanner
     restart: unless-stopped
     environment:
