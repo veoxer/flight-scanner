@@ -32,7 +32,8 @@ builder.Services.AddHealthChecks();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("flight-provider", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("serpapi", client => client.Timeout = TimeSpan.FromSeconds(45));
-builder.Services.AddHttpClient("whatsapp", client => client.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddHttpClient("travelpayouts", client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient("whatsapp", client => client.Timeout = TimeSpan.FromSeconds(45));
 builder.Services.AddHttpClient("location-data", client => client.Timeout = TimeSpan.FromSeconds(90));
 builder.Services.AddHttpClient("wikidata-on-demand", client => client.Timeout = TimeSpan.FromSeconds(20));
 
@@ -42,6 +43,7 @@ builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuth
 builder.Services.AddScoped<IdentityErrorDescriber, LocalizedIdentityErrorDescriber>();
 builder.Services.AddScoped<SetupState>();
 builder.Services.AddScoped<IFlightSearchService, FlightSearchService>();
+builder.Services.AddScoped<ITravelpayoutsDiscoveryService, TravelpayoutsDiscoveryService>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 builder.Services.AddSingleton<StartupInitializer>();
 builder.Services.AddHostedService<AlertScannerService>();
@@ -399,6 +401,49 @@ app.MapPost("/admin/integrations/save", async (
 }).RequireAuthorization(policy => policy.RequireRole("Admin"))
   .DisableAntiforgery();
 
+app.MapPost("/admin/integrations/travelpayouts/save", async (
+    HttpContext context,
+    IDbContextFactory<ApplicationDbContext> dbFactory,
+    CancellationToken cancellationToken) =>
+{
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var token = ReadFormValue(form, "travelpayoutsToken").Trim();
+    var clearToken = HasCheckedValue(form, "clearTravelpayoutsToken");
+    if (token.Length > 512)
+    {
+        return Results.BadRequest("The API token is too long.");
+    }
+
+    await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+    var setting = await db.IntegrationSettings
+        .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Travelpayouts, cancellationToken);
+    if (setting is null)
+    {
+        setting = new IntegrationSetting { Kind = IntegrationKind.Travelpayouts };
+        db.IntegrationSettings.Add(setting);
+    }
+
+    var options = System.Text.Json.JsonSerializer.Deserialize<TravelpayoutsOptions>(
+        setting.SettingsJson,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+    if (clearToken)
+    {
+        options.ApiToken = "";
+    }
+    else if (token.Length > 0)
+    {
+        options.ApiToken = token;
+    }
+
+    setting.Enabled = options.ApiToken.Length > 0;
+    setting.SettingsJson = System.Text.Json.JsonSerializer.Serialize(
+        options,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+    setting.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.LocalRedirect("/admin/integrations?travelpayoutsSaved=true");
+}).RequireAuthorization(policy => policy.RequireRole("Admin"));
+
 app.MapPost("/admin/reminders/save", async (
     HttpContext context,
     IDbContextFactory<ApplicationDbContext> dbFactory,
@@ -412,11 +457,9 @@ app.MapPost("/admin/reminders/save", async (
 
     var whatsApp = new WhatsAppOptions
     {
-        EndpointUrl = ReadFormValue(form, "whatsAppEndpointUrl"),
-        HttpMethod = ReadFormValue(form, "whatsAppHttpMethod", "POST"),
-        HeadersJson = ReadFormValue(form, "whatsAppHeadersJson", "{}"),
-        To = ReadFormValue(form, "whatsAppTo"),
-        BodyTemplate = ReadFormValue(form, "whatsAppBodyTemplate", "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}")
+        BaseUrl = ReadFormValue(form, "openWaBaseUrl"),
+        SessionId = ReadFormValue(form, "openWaSessionId"),
+        To = ReadFormValue(form, "whatsAppTo")
     };
     var webPush = new WebPushOptions
     {
@@ -426,6 +469,15 @@ app.MapPost("/admin/reminders/save", async (
     };
 
     await using var db = await dbFactory.CreateDbContextAsync();
+    var savedWhatsApp = await db.IntegrationSettings.AsNoTracking()
+        .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.WhatsApp);
+    var existingWhatsApp = savedWhatsApp is null
+        ? new WhatsAppOptions()
+        : System.Text.Json.JsonSerializer.Deserialize<WhatsAppOptions>(savedWhatsApp.SettingsJson, jsonOptions) ?? new WhatsAppOptions();
+    var submittedOpenWaApiKey = ReadFormValue(form, "openWaApiKey").Trim();
+    whatsApp.ApiKey = HasCheckedValue(form, "clearOpenWaApiKey")
+        ? ""
+        : submittedOpenWaApiKey.Length > 0 ? submittedOpenWaApiKey : existingWhatsApp.ApiKey;
     var email = await LoadMergedEmailOptionsAsync(db, configuration);
     await SaveIntegrationSettingAsync(db, IntegrationKind.Email, HasCheckedValue(form, "emailEnabled"), email, jsonOptions);
     await SaveIntegrationSettingAsync(db, IntegrationKind.WhatsApp, HasCheckedValue(form, "whatsAppEnabled"), whatsApp, jsonOptions);

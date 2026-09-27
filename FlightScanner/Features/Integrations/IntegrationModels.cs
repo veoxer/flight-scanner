@@ -8,7 +8,8 @@ public enum IntegrationKind
     Email = 1,
     WhatsApp = 2,
     WebPush = 3,
-    AlertPolicy = 4
+    AlertPolicy = 4,
+    Travelpayouts = 5
 }
 
 public sealed class IntegrationSetting
@@ -47,6 +48,11 @@ public sealed class FlightProviderOptions
     public int AlertScanIntervalMinutes { get; set; } = 180;
 }
 
+public sealed class TravelpayoutsOptions
+{
+    public string ApiToken { get; set; } = "";
+}
+
 public sealed class EmailOptions
 {
     public string SmtpHost { get; set; } = "smtp.gmail.com";
@@ -59,11 +65,10 @@ public sealed class EmailOptions
 
 public sealed class WhatsAppOptions
 {
-    public string EndpointUrl { get; set; } = "";
-    public string HttpMethod { get; set; } = "POST";
-    public string HeadersJson { get; set; } = "{}";
+    public string BaseUrl { get; set; } = "";
+    public string SessionId { get; set; } = "";
+    public string ApiKey { get; set; } = "";
     public string To { get; set; } = "";
-    public string BodyTemplate { get; set; } = "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}";
 }
 
 public sealed class WebPushOptions

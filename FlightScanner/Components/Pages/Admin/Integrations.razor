@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @using FlightScanner.Features.Localization
 @inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ITravelpayoutsDiscoveryService TravelpayoutsDiscovery
 
 <PageTitle>@UiText.T("FlightIntegrations")</PageTitle>
 
@@ -46,12 +47,127 @@
     </form>
 </section>
 
+<section class="tool-surface mt-4">
+    <h2>Travelpayouts Data API pilot</h2>
+    <p class="settings-note">Test cached, indicative fares here. This does not change flight searches or alerts. Prices must be checked live before booking.</p>
+
+    @if (TravelpayoutsSaved)
+    {
+        <div class="alert alert-success">Travelpayouts settings saved.</div>
+    }
+
+    <form method="post" action="/admin/integrations/travelpayouts/save">
+        <AntiforgeryToken />
+        <label class="form-label" for="travelpayouts-token">API token</label>
+        <input id="travelpayouts-token" class="form-control" type="password" name="travelpayoutsToken" value="" autocomplete="new-password" spellcheck="false" />
+        <div class="form-text">@(hasTravelpayoutsToken ? "A token is saved. Leave this blank to keep it." : "No token is saved yet.") Find it in Travelpayouts → Profile → API token.</div>
+        @if (hasTravelpayoutsToken)
+        {
+            <div class="form-check mt-2">
+                <input id="clear-travelpayouts-token" class="form-check-input" type="checkbox" name="clearTravelpayoutsToken" value="true" />
+                <label class="form-check-label" for="clear-travelpayouts-token">Remove saved token</label>
+            </div>
+        }
+        <button type="submit" class="btn btn-primary mt-3">Save Travelpayouts token</button>
+    </form>
+
+    <h3 class="mt-4">Try a monthly route</h3>
+    <form method="get" action="/admin/integrations">
+        <input type="hidden" name="tpTest" value="true" />
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label" for="tp-origin">Origin airport or city code</label>
+                <input id="tp-origin" class="form-control" name="tpOrigin" value="@(TpOrigin ?? "CMN")" maxlength="3" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="tp-destination">Destination airport or city code</label>
+                <input id="tp-destination" class="form-control" name="tpDestination" value="@(TpDestination ?? "PAR")" maxlength="3" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="tp-month">Departure month</label>
+                <input id="tp-month" class="form-control" type="month" name="tpMonth" value="@(TpMonth ?? DateTime.Today.AddMonths(1).ToString("yyyy-MM"))" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="tp-stay-days">Stay length in days</label>
+                <input id="tp-stay-days" class="form-control" type="number" name="tpStayDays" value="@TpStayDays" min="1" max="60" placeholder="Blank = one way" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="tp-weekday">Departure weekday</label>
+                <select id="tp-weekday" class="form-select" name="tpWeekday">
+                    <option value="">Any day</option>
+                    @foreach (var day in Enum.GetValues<DayOfWeek>())
+                    {
+                        <option value="@day" selected="@(TpWeekday == day.ToString())">@day</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-outline-primary mt-3" disabled="@(!hasTravelpayoutsToken)">Test cached fares</button>
+    </form>
+
+    @if (TpTest)
+    {
+        @if (!string.IsNullOrWhiteSpace(travelpayoutsResult?.Error))
+        {
+            <div class="alert alert-warning mt-3">@travelpayoutsResult.Error</div>
+        }
+        else if (travelpayoutsResult is not null)
+        {
+            <p class="mt-3">@travelpayoutsResult.Candidates.Count observed fare(s). An empty result does not mean no flights exist.</p>
+            @if (travelpayoutsResult.Candidates.Count > 0)
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead><tr><th>Departure</th><th>Return</th><th>Airports</th><th>Airline</th><th>Stops</th><th>Observed price</th></tr></thead>
+                        <tbody>
+                            @foreach (var candidate in travelpayoutsResult.Candidates)
+                            {
+                                <tr>
+                                    <td>@candidate.DepartureDate</td>
+                                    <td>@candidate.ReturnDate</td>
+                                    <td>@candidate.OriginAirport → @candidate.DestinationAirport</td>
+                                    <td>@candidate.Airline</td>
+                                    <td>@candidate.Stops</td>
+                                    <td>@candidate.Price.ToString("0.##") @candidate.Currency</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    }
+</section>
+
 @code {
     private IntegrationForm Input { get; set; } = new();
     private bool saved;
+    private bool hasTravelpayoutsToken;
+    private TravelpayoutsDiscoveryResult? travelpayoutsResult;
 
     [Parameter, SupplyParameterFromQuery(Name = "saved")]
     public bool Saved { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "travelpayoutsSaved")]
+    public bool TravelpayoutsSaved { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tpTest")]
+    public bool TpTest { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tpOrigin")]
+    public string? TpOrigin { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tpDestination")]
+    public string? TpDestination { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tpMonth")]
+    public string? TpMonth { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tpStayDays")]
+    public int? TpStayDays { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tpWeekday")]
+    public string? TpWeekday { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -59,22 +175,44 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         var setting = await db.IntegrationSettings.AsNoTracking()
             .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.FlightProvider);
-        if (setting is null)
+        if (setting is not null)
         {
-            return;
+            var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(
+                setting.SettingsJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+            Input = new IntegrationForm
+            {
+                Enabled = setting.Enabled,
+                ApiKeys = string.IsNullOrWhiteSpace(options.SerpApiApiKeys)
+                    ? options.SerpApiApiKey
+                    : options.SerpApiApiKeys,
+                AlertScanIntervalMinutes = AlertScanOptions.NormalizeMinutes(options.AlertScanIntervalMinutes)
+            };
         }
 
-        var options = System.Text.Json.JsonSerializer.Deserialize<FlightProviderOptions>(
-            setting.SettingsJson,
-            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
-        Input = new IntegrationForm
+        var travelpayoutsSetting = await db.IntegrationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Kind == IntegrationKind.Travelpayouts);
+        var travelpayoutsOptions = travelpayoutsSetting is null
+            ? new TravelpayoutsOptions()
+            : System.Text.Json.JsonSerializer.Deserialize<TravelpayoutsOptions>(
+                travelpayoutsSetting.SettingsJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) ?? new();
+        hasTravelpayoutsToken = !string.IsNullOrWhiteSpace(travelpayoutsOptions.ApiToken);
+
+        if (TpTest)
         {
-            Enabled = setting.Enabled,
-            ApiKeys = string.IsNullOrWhiteSpace(options.SerpApiApiKeys)
-                ? options.SerpApiApiKey
-                : options.SerpApiApiKeys,
-            AlertScanIntervalMinutes = AlertScanOptions.NormalizeMinutes(options.AlertScanIntervalMinutes)
-        };
+            if (!DateOnly.TryParseExact($"{TpMonth}-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var monthDate))
+            {
+                travelpayoutsResult = new([], "Choose a valid month.");
+                return;
+            }
+            var weekday = Enum.TryParse<DayOfWeek>(TpWeekday, true, out var parsedWeekday)
+                ? parsedWeekday
+                : (DayOfWeek?)null;
+            travelpayoutsResult = await TravelpayoutsDiscovery.SearchMonthAsync(
+                TpOrigin ?? "", TpDestination ?? "", monthDate.Year, monthDate.Month, TpStayDays, weekday);
+        }
     }
 
     private sealed class IntegrationForm

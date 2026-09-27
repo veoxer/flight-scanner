@@ -44,16 +44,18 @@
 
     <div class="settings-grid">
         <section class="tool-surface">
-            <h2>WhatsApp API</h2>
-            <label class="form-label">@UiText.T("EndpointUrl")</label>
-            <input class="form-control" name="whatsAppEndpointUrl" value="@whatsApp.EndpointUrl" />
-            <label class="form-label mt-3">@UiText.T("HttpMethod")</label>
-            <input class="form-control" name="whatsAppHttpMethod" value="@whatsApp.HttpMethod" />
-            <label class="form-label mt-3">@UiText.T("HeadersJson")</label>
-            <textarea class="form-control code-box" name="whatsAppHeadersJson">@whatsApp.HeadersJson</textarea>
+            <h2>OpenWA</h2>
+            <label class="form-label">OpenWA base URL</label>
+            <input class="form-control" type="url" name="openWaBaseUrl" value="@whatsApp.BaseUrl" placeholder="http://openwa:2785" />
+            <small class="settings-note">Use an address reachable from this app's container. Include the port; /api is optional.</small>
+            <label class="form-label mt-3">Session ID</label>
+            <input class="form-control" name="openWaSessionId" value="@whatsApp.SessionId" />
+            <label class="form-label mt-3">API key</label>
+            <input class="form-control" type="password" name="openWaApiKey" autocomplete="new-password" placeholder="@(string.IsNullOrEmpty(whatsApp.ApiKey) ? "Enter API key" : "Saved; leave blank to keep")" />
+            <label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="clearOpenWaApiKey" value="true" /> Remove saved API key</label>
             <label class="form-label mt-3">@UiText.T("RecipientPhone")</label>
             <input class="form-control" name="whatsAppTo" value="@whatsApp.To" />
-            <input type="hidden" name="whatsAppBodyTemplate" value="@whatsApp.BodyTemplate" />
+            <small class="settings-note">Optional fallback number in international format. OpenWA checks the number before sending.</small>
         </section>
 
         <section class="tool-surface">

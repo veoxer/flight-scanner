@@ -1051,11 +1051,10 @@ public sealed class StartupInitializer(
             IntegrationKind.Email => Serialize(EmailOptionsResolver.FromConfiguration(configuration)),
             IntegrationKind.WhatsApp => Serialize(new WhatsAppOptions
             {
-                EndpointUrl = configuration["WHATSAPP_API_URL"] ?? "",
-                HttpMethod = configuration["WHATSAPP_HTTP_METHOD"] ?? "POST",
-                HeadersJson = configuration["WHATSAPP_HEADERS_JSON"] ?? "{}",
-                To = configuration["WHATSAPP_TO"] ?? "",
-                BodyTemplate = configuration["WHATSAPP_BODY_TEMPLATE"] ?? "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}"
+                BaseUrl = configuration["OPENWA_BASE_URL"] ?? "",
+                SessionId = configuration["OPENWA_SESSION_ID"] ?? "",
+                ApiKey = configuration["OPENWA_API_KEY"] ?? "",
+                To = configuration["WHATSAPP_TO"] ?? ""
             }),
             IntegrationKind.WebPush => Serialize(new WebPushOptions
             {
@@ -1064,6 +1063,7 @@ public sealed class StartupInitializer(
                 Subject = configuration["VAPID_SUBJECT"] ?? "mailto:admin@example.com"
             }),
             IntegrationKind.AlertPolicy => Serialize(new AlertPolicyOptions()),
+            IntegrationKind.Travelpayouts => Serialize(new TravelpayoutsOptions()),
             _ => "{}"
         };
     }

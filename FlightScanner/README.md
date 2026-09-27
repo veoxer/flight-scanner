@@ -40,7 +40,7 @@ Optional:
 
 - nginx and TLS for public access through a domain such as `flight.veoxer.com`.
 - SMTP account for email alerts, forgot password, and email confirmation.
-- WhatsApp HTTP API endpoint.
+- An OpenWA instance and a connected WhatsApp session.
 - VAPID keys for browser push notifications.
 - Docker/Portainer for container deployment.
 
@@ -188,16 +188,16 @@ SMTP_FROM_NAME=Flight Scanner
 SMTP_USE_TLS=true
 ```
 
-WhatsApp defaults:
+OpenWA WhatsApp defaults:
 
 ```env
-WHATSAPP_ENABLED=false
-WHATSAPP_URL=
-WHATSAPP_HTTP_METHOD=POST
-WHATSAPP_HEADERS=
-WHATSAPP_BODY_TEMPLATE=
+OPENWA_BASE_URL=http://openwa:2785
+OPENWA_SESSION_ID=
+OPENWA_API_KEY=
 WHATSAPP_TO=
 ```
+
+Set the base URL to an address reachable from the Flight Scanner container. Configure the same values under **Admin > Reminders**, then enable WhatsApp there. The session ID is the UUID returned by OpenWA's `GET /api/sessions`; the API key needs permission to send messages. Users can set their phone number in their account profile. For each alert, the app checks the international phone number with `GET /api/sessions/{sessionId}/contacts/check/{number}` and sends to the returned `whatsappId` with `POST /api/sessions/{sessionId}/messages/send-text`. The optional `WHATSAPP_TO` is a fallback recipient.
 
 Browser push defaults:
 
@@ -321,6 +321,17 @@ Turn dummy mode off when you want real SerpApi calls:
 ```env
 FLIGHTSCANNER_USE_DUMMY_FLIGHT_DATA=false
 ```
+
+## Travelpayouts Data API Pilot
+
+The admin-only pilot tests cached Aviasales fare observations without changing the existing SerpApi search or alert scanner.
+
+1. In Travelpayouts, find the API token under **Profile > API token**. Do not add it to source files or a URL.
+2. In Flight Scanner, sign in as an admin and open **Admin > Flight API** (`/admin/integrations`). Save the token in the **Travelpayouts Data API pilot** section. The saved token is not shown again; leaving the field blank keeps it.
+3. Test a route using three-letter airport or city IATA codes, a departure month, and optionally a stay length and departure weekday. A blank stay length tests one-way fares. The test requests prices in EUR.
+4. Compare any observed dates with an exact-date SerpApi search before relying on them. An empty result means there was no matching cached observation, not that no flights exist.
+
+The token is stored in the app's existing integration settings database, like other provider credentials. The pilot does not send notifications or make Duffel searches. To remove the token, select **Remove saved token** and save.
 
 ## Browser Push Notifications
 
@@ -551,4 +562,3 @@ The cache and already saved rows are preserved.
 ### Translation Value Too Long
 
 Use the latest script. It widens translation columns before updating rows.
-

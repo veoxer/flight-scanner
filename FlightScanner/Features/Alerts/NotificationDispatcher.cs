@@ -1,9 +1,9 @@
 using System.Net;
-using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Mail;
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FlightScanner.Data;
 using FlightScanner.Features.Flights;
 using FlightScanner.Features.Integrations;
@@ -34,7 +34,7 @@ public sealed class NotificationDispatcher(
             await SendEmailAsync(alert, alert.User.Email, subject, body, settings.Email.Options, cancellationToken);
         }
 
-        var whatsAppRecipient = FirstNonEmpty(alert.WhatsAppTo, settings.WhatsApp.Options.To, alert.User?.PhoneNumber);
+        var whatsAppRecipient = FirstNonEmpty(alert.WhatsAppTo, alert.User?.PhoneNumber, settings.WhatsApp.Options.To);
         if (settings.WhatsApp.Enabled && !string.IsNullOrWhiteSpace(whatsAppRecipient))
         {
             await SendWhatsAppAsync(alert, whatsAppRecipient, subject, body, settings.WhatsApp.Options, cancellationToken);
@@ -89,26 +89,45 @@ public sealed class NotificationDispatcher(
 
     private async Task SendWhatsAppAsync(PriceAlert alert, string recipient, string subject, string body, WhatsAppOptions options, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(options.EndpointUrl))
+        if (string.IsNullOrWhiteSpace(options.BaseUrl) || string.IsNullOrWhiteSpace(options.SessionId) || string.IsNullOrWhiteSpace(options.ApiKey))
         {
-            await RecordAttemptAsync(alert.Id, "WhatsApp", recipient, subject, body, false, "WhatsApp integration is not configured.", cancellationToken);
+            await RecordAttemptAsync(alert.Id, "WhatsApp", recipient, subject, body, false, "OpenWA base URL, session ID, or API key is missing.", cancellationToken);
             return;
         }
 
         try
         {
-            var request = new HttpRequestMessage(new HttpMethod(options.HttpMethod), options.EndpointUrl)
+            var baseUrl = options.BaseUrl.TrimEnd('/');
+            if (baseUrl.EndsWith("/api", StringComparison.OrdinalIgnoreCase))
             {
-                Content = new StringContent(RenderWhatsAppBody(options.BodyTemplate, recipient, subject, body), Encoding.UTF8, "application/json")
-            };
-
-            foreach (var header in ParseHeaders(options.HeadersJson))
+                baseUrl = baseUrl[..^4];
+            }
+            var sessionPath = $"{baseUrl}/api/sessions/{Uri.EscapeDataString(options.SessionId.Trim())}";
+            var phone = recipient.Trim();
+            if (phone.EndsWith("@c.us", StringComparison.OrdinalIgnoreCase))
             {
-                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                phone = phone[..^5];
+            }
+            phone = Regex.Replace(phone, "[+()\\s.-]", "");
+            if (!Regex.IsMatch(phone, "^[0-9]{7,15}$"))
+            {
+                throw new InvalidOperationException("WhatsApp recipient must be an international phone number with country code.");
             }
 
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             var client = httpClientFactory.CreateClient("whatsapp");
+            using var lookup = new HttpRequestMessage(HttpMethod.Get, $"{sessionPath}/contacts/check/{phone}");
+            lookup.Headers.Add("X-API-Key", options.ApiKey);
+            using var lookupResponse = await client.SendAsync(lookup, cancellationToken);
+            lookupResponse.EnsureSuccessStatusCode();
+            var contact = await lookupResponse.Content.ReadFromJsonAsync<OpenWaNumberCheck>(cancellationToken);
+            if (contact?.Exists != true || string.IsNullOrWhiteSpace(contact.WhatsappId))
+            {
+                throw new InvalidOperationException("This phone number is not registered on WhatsApp.");
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{sessionPath}/messages/send-text");
+            request.Headers.Add("X-API-Key", options.ApiKey);
+            request.Content = JsonContent.Create(new { chatId = contact.WhatsappId, text = body });
             using var response = await client.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
             await RecordAttemptAsync(alert.Id, "WhatsApp", recipient, subject, body, true, null, cancellationToken);
@@ -150,23 +169,7 @@ public sealed class NotificationDispatcher(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static string RenderWhatsAppBody(string template, string recipient, string subject, string message)
-    {
-        template = string.IsNullOrWhiteSpace(template)
-            ? "{\"to\":\"{{to}}\",\"message\":\"{{message}}\"}"
-            : template;
-
-        return template
-            .Replace("{{to}}", JsonStringValue(recipient), StringComparison.OrdinalIgnoreCase)
-            .Replace("{{subject}}", JsonStringValue(subject), StringComparison.OrdinalIgnoreCase)
-            .Replace("{{message}}", JsonStringValue(message), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string JsonStringValue(string value)
-    {
-        var serialized = JsonSerializer.Serialize(value);
-        return serialized.Length >= 2 ? serialized[1..^1] : value;
-    }
+    private sealed record OpenWaNumberCheck(bool Exists, string? WhatsappId);
 
     private static string BuildSubject(PriceAlert alert, FlightOffer offer, string culture)
     {
@@ -342,16 +345,6 @@ public sealed class NotificationDispatcher(
     private static string FirstNonEmpty(params string?[] values)
     {
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";
-    }
-
-    private static Dictionary<string, string> ParseHeaders(string headersJson)
-    {
-        if (string.IsNullOrWhiteSpace(headersJson))
-        {
-            return [];
-        }
-
-        return JsonSerializer.Deserialize<Dictionary<string, string>>(headersJson, JsonOptions()) ?? [];
     }
 
     private static JsonSerializerOptions JsonOptions() => new(JsonSerializerDefaults.Web);
